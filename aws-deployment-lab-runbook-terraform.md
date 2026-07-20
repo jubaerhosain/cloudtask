@@ -37,7 +37,7 @@ ExpiresOn=<planned deletion date, YYYY-MM-DD>
 
 ### Tagging rule
 
-Verify that Terraform provider `default_tags` is active so every resource is tagged automatically. For any manually created resource, add all mandatory tags immediately.
+This enforces the specification's §16 tagging contract. Verify that Terraform provider `default_tags` is active so every resource is tagged automatically. For any manually created resource, add all mandatory tags immediately.
 
 ## 4. Day 0 — account safety and local preparation
 
@@ -733,25 +733,25 @@ Apply Terraform and verify queue drains.
 
 ### Experiment E — force application errors
 
-Create an explicitly dev-only endpoint or feature flag such as:
+Use the spec-defined dev-only failure endpoint (`application-spec.md` §6.8); do not build a new one.
 
-`POST /api/v1/debug/fail?type=500`
+#### Create failure
 
-Requirements:
+Set `ENABLE_FAILURE_ENDPOINTS=true` in a new API task-definition revision through Terraform and update the service. Authenticate, then call the endpoint more than five times:
 
-- Enabled only when `ENABLE_FAILURE_ENDPOINTS=true`.
-- Protected by authentication.
-- Never enabled in production.
+```text
+POST /api/v1/debug/fail?type=500
+```
 
-Generate more than five controlled 500 responses.
-
-Expected:
+#### Expected symptoms
 
 - ALB target 5xx metric increases.
-- Alarm changes state when threshold is met.
+- The 5xx alarm changes state when the threshold is met.
 - Logs contain request IDs and stack traces without secrets.
 
-Repair by disabling the flag and releasing a new task definition.
+#### Repair
+
+Set `ENABLE_FAILURE_ENDPOINTS=false` (or remove it), release a new task definition, and confirm the alarm returns to OK. Never enable this endpoint in production.
 
 ### Experiment F — Redis outage simulation
 

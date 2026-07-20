@@ -116,9 +116,9 @@ ExpiresOn=<YYYY-MM-DD>
 
 `ManagedBy=manual-console` is the one intentional difference from the specification's tagging contract (which uses `ManagedBy=terraform`), because this runbook creates resources by hand rather than through Terraform. Every other tag value matches the specification exactly.
 
-### Tag rule
+### Tagging rule
 
-**Do not click Create until you have opened the Tags section and added the mandatory tags.**
+This enforces the specification's §16 tagging contract. **Do not click Create until you have opened the Tags section and added the mandatory tags.**
 
 Some AWS resources do not support tags during their first creation screen. In that case:
 
@@ -1700,7 +1700,7 @@ Set `ENABLE_FAILURE_ENDPOINTS=false` (or remove it), release a new task definiti
 
 # Part I — Troubleshooting framework
 
-Symptom-indexed reference. Symptoms that a Part H drill already exercises point to that drill; Redis and S3 (no drill) keep full checklists.
+Symptom-indexed reference. Symptoms that a Part H drill already exercises point to that drill; S3 (no drill) keeps a full checklist.
 
 ## 49. ECS task will not start
 
@@ -1731,7 +1731,7 @@ See drill 4 (§44). Credential problem: `DATABASE_URL` username/password, databa
 
 ## 53. Redis connection fails
 
-Check:
+See drill 10 (§48.2). Check:
 
 1. Redis endpoint, not IP.
 2. Port 6379.

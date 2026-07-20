@@ -566,7 +566,7 @@ SNS email notification is optional. Create the topic and expose its ARN; subscri
 
 ## 11. AWS architecture
 
-The browser reaches everything through a single Application Load Balancer, which routes by path to the web and API target groups (see Section 18).
+The browser reaches everything through a single Application Load Balancer, which routes by path to the web and API target groups (see the listener rules in Section 14).
 
 ```mermaid
 flowchart TB
@@ -721,7 +721,7 @@ Default task sizes:
 
 - Internet-facing ALB
 - HTTP listener
-- Two target groups with target type `ip` (see the path-based routing in Section 18):
+- Two target groups with target type `ip`:
   - API target group — health check path `/health`
   - Web target group — health check path `/`
 - Listener rules: `/api/*`, `/health`, `/ready`, `/docs*` route to the API target group; all other paths route to the web target group
@@ -891,12 +891,9 @@ Choose one:
 1. Deploy Next.js as a standalone container, or
 2. Export a static frontend to S3/CloudFront if no server-only feature is required.
 
-For the first implementation, use the Next.js standalone container so the monorepo and deployment workflow stay consistent. A second ALB target group is optional; the simplest acceptable design is one web service and one API service with path-based routing:
+For the first implementation, use the Next.js standalone container so the monorepo and deployment workflow stay consistent. Deploy one web service and one API service behind the two ALB target groups, using the path-based routing defined in Section 14.
 
-- `/api/*`, `/health`, `/ready`, `/docs*` -> API target group
-- all other paths -> web target group
-
-If this approach is used, create separate ECS services for web, API, and worker. The worker has no load balancer.
+Create separate ECS services for web, API, and worker. The worker has no load balancer.
 
 ## 19. Terraform module structure
 
@@ -1107,7 +1104,7 @@ When implementing this specification:
 8. Use placeholders and Terraform outputs.
 9. Include exact commands in README files.
 10. Include cleanup instructions prominently.
-11. Ensure every AWS resource carries the mandatory tag set.
+11. Follow the Section 16 tagging contract for every resource.
 12. Prefer Terraform over console clicks for reproducibility.
 13. Report any deviation from this specification in a `DEVIATIONS.md` file.
 
