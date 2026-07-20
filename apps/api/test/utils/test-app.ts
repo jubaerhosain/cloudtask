@@ -1,7 +1,7 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 import { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
 /**
@@ -17,7 +17,9 @@ export interface TestContext {
   close: () => Promise<void>;
 }
 
-export async function createTestApp(): Promise<TestContext> {
+export async function createTestApp(
+  configure?: (builder: TestingModuleBuilder) => void,
+): Promise<TestContext> {
   let pgContainer: StartedPostgreSqlContainer | undefined;
   let redisContainer: StartedRedisContainer | undefined;
 
@@ -50,6 +52,7 @@ export async function createTestApp(): Promise<TestContext> {
   const { User } = await import('../../src/users/user.entity');
   const { Project } = await import('../../src/projects/project.entity');
   const { Task } = await import('../../src/tasks/task.entity');
+  const { ExportJob } = await import('../../src/exports/export.entity');
   const { CreateUsers1720000000000 } = await import(
     '../../src/database/migrations/1720000000000-CreateUsers'
   );
@@ -59,14 +62,18 @@ export async function createTestApp(): Promise<TestContext> {
   const { CreateTasks1720000002000 } = await import(
     '../../src/database/migrations/1720000002000-CreateTasks'
   );
+  const { CreateExports1720000003000 } = await import(
+    '../../src/database/migrations/1720000003000-CreateExports'
+  );
   const migrator = new DataSource({
     type: 'postgres',
     url: databaseUrl,
-    entities: [User, Project, Task],
+    entities: [User, Project, Task, ExportJob],
     migrations: [
       CreateUsers1720000000000,
       CreateProjects1720000001000,
       CreateTasks1720000002000,
+      CreateExports1720000003000,
     ],
     synchronize: false,
   });
@@ -75,7 +82,9 @@ export async function createTestApp(): Promise<TestContext> {
   await migrator.destroy();
 
   const { AppModule } = await import('../../src/app.module');
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  configure?.(builder);
+  const moduleRef = await builder.compile();
 
   const app = moduleRef.createNestApplication();
   // Mirror main.ts: operational endpoints stay outside the versioned prefix.

@@ -8,6 +8,7 @@ import { ProblemDetailsFilter } from './common/filters/problem-details.filter';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { DebugModule } from './debug/debug.module';
+import { ExportsModule } from './exports/exports.module';
 import { HealthModule } from './health/health.module';
 import { LoggerModule } from './logger/logger.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -31,6 +32,7 @@ import { TasksModule } from './tasks/tasks.module';
     AuthModule,
     ProjectsModule,
     TasksModule,
+    ExportsModule,
     HealthModule,
     ...(process.env.ENABLE_FAILURE_ENDPOINTS === 'true' ? [DebugModule] : []),
   ],
