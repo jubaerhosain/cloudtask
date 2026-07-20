@@ -13,7 +13,6 @@ function loadConfigService(): ConfigService {
     return new ConfigService(parseConfig(apiConfigSchema, process.env));
   } catch (err) {
     if (err instanceof ConfigValidationError) {
-      // eslint-disable-next-line no-console
       console.error(`\n[config] Failed to start — ${err.message}\n`);
       process.exit(1);
     }

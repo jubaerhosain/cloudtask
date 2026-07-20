@@ -10,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { DebugModule } from './debug/debug.module';
 import { HealthModule } from './health/health.module';
 import { LoggerModule } from './logger/logger.module';
+import { ProjectsModule } from './projects/projects.module';
 import { RateLimitGuard } from './ratelimit/rate-limit.guard';
 import { RateLimitModule } from './ratelimit/ratelimit.module';
 import { RedisModule } from './redis/redis.module';
@@ -27,6 +28,7 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     RateLimitModule,
     AuthModule,
+    ProjectsModule,
     HealthModule,
     ...(process.env.ENABLE_FAILURE_ENDPOINTS === 'true' ? [DebugModule] : []),
   ],

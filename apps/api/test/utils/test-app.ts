@@ -48,14 +48,18 @@ export async function createTestApp(): Promise<TestContext> {
   // Run migrations against a temporary DataSource. Entities/migrations are
   // referenced by class (not globs) so this loads cleanly under ts-jest.
   const { User } = await import('../../src/users/user.entity');
+  const { Project } = await import('../../src/projects/project.entity');
   const { CreateUsers1720000000000 } = await import(
     '../../src/database/migrations/1720000000000-CreateUsers'
+  );
+  const { CreateProjects1720000001000 } = await import(
+    '../../src/database/migrations/1720000001000-CreateProjects'
   );
   const migrator = new DataSource({
     type: 'postgres',
     url: databaseUrl,
-    entities: [User],
-    migrations: [CreateUsers1720000000000],
+    entities: [User, Project],
+    migrations: [CreateUsers1720000000000, CreateProjects1720000001000],
     synchronize: false,
   });
   await migrator.initialize();
