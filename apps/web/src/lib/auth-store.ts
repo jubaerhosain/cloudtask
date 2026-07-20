@@ -21,10 +21,20 @@ export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
+// Cache the parsed user so getUser returns a STABLE reference until the stored
+// value actually changes — required for useSyncExternalStore (a fresh object
+// each call causes an infinite render loop).
+let cachedRaw: string | null = null;
+let cachedUser: UserPublic | null = null;
+
 export function getUser(): UserPublic | null {
   if (typeof window === 'undefined') return null;
   const raw = window.localStorage.getItem(USER_KEY);
-  return raw ? (JSON.parse(raw) as UserPublic) : null;
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    cachedUser = raw ? (JSON.parse(raw) as UserPublic) : null;
+  }
+  return cachedUser;
 }
 
 export function setSession(token: string, user: UserPublic): void {
