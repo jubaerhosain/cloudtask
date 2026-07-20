@@ -2,7 +2,7 @@
 
 ## 1. Document purpose
 
-This document is an implementation contract for an AI coding agent such as Claude. Build the application exactly as described unless a requirement is technically impossible. When a choice is unspecified, prefer the simplest production-style implementation that is secure, observable, testable, and inexpensive for a short-lived AWS learning environment.
+This document is an implementation contract for an AI coding agent such as Claude. Build the application exactly as described unless a requirement is technically impossible. When a choice is unspecified, prefer the simplest secure, testable implementation appropriate for a short-lived AWS learning environment.
 
 The project is intentionally designed to exercise realistic AWS services:
 
@@ -136,9 +136,9 @@ Do not use AWS CDK, CloudFormation, Serverless Framework, or AWS Copilot for the
 
 ## 6. Functional requirements
 
-## 6.1 Authentication
+### 6.1 Authentication
 
-### Registration
+#### Registration
 
 `POST /auth/register`
 
@@ -160,7 +160,7 @@ Rules:
 - Password must be hashed using Argon2id.
 - Never log passwords or password hashes.
 
-### Login
+#### Login
 
 `POST /auth/login`
 
@@ -185,7 +185,7 @@ JWT requirements:
 - Access token lifetime: 1 hour.
 - Every protected query must be scoped to the authenticated user.
 
-## 6.2 Projects
+### 6.2 Projects
 
 Project fields:
 
@@ -206,7 +206,7 @@ Endpoints:
 
 A user must never access another user's project.
 
-## 6.3 Tasks
+### 6.3 Tasks
 
 Task fields:
 
@@ -241,7 +241,7 @@ List filters:
 
 Default page size: 20. Maximum page size: 100.
 
-## 6.4 Project summary and Redis cache
+### 6.4 Project summary and Redis cache
 
 `GET /projects/:id/summary`
 
@@ -265,9 +265,9 @@ Cache behavior:
 - Invalidate the key after task create, update, or delete.
 - If Redis is unavailable, log a warning and compute from PostgreSQL. The API must remain functional.
 
-## 6.5 CSV export through SQS
+### 6.5 CSV export through SQS
 
-### Request export
+#### Request export
 
 `POST /projects/:id/exports`
 
@@ -317,7 +317,7 @@ Idempotency:
 - If an export is already `completed`, a repeated message must not create another file.
 - Use a database transaction or conditional status update to claim processing.
 
-### Export status
+#### Export status
 
 `GET /exports/:id`
 
@@ -330,14 +330,14 @@ Possible statuses:
 
 For a completed export, return a short-lived S3 presigned download URL valid for 5 minutes.
 
-## 6.6 Rate limiting
+### 6.6 Rate limiting
 
 - Limit login attempts to 10 per 5 minutes per IP.
 - Limit authenticated API calls to 120 per minute per user.
 - Use Redis when available.
 - Do not fail all requests if Redis is unavailable; use a conservative in-memory fallback for a single API task.
 
-## 6.7 Frontend pages
+### 6.7 Frontend pages
 
 Required routes:
 
@@ -549,7 +549,7 @@ Create alarms for:
 - DLQ visible messages >= 1
 - RDS CPU > 80% for 10 minutes
 
-SNS email notification is optional because email subscription confirmation complicates automated setup. Create the topic and expose its ARN; subscription can be added manually.
+SNS email notification is optional. Create the topic and expose its ARN; subscription can be added manually.
 
 ## 11. AWS architecture
 
@@ -631,7 +631,7 @@ Outbound:
 
 - HTTPS 443 for AWS APIs and image pulls through NAT
 
-The web service serves the Next.js frontend and calls the API through the ALB, so it needs no database or Redis egress.
+The web service reaches the API through the ALB, so it needs no database or Redis egress.
 
 ### API security group
 
@@ -713,15 +713,15 @@ HTTPS should be an optional extension using ACM and Route 53.
 
 ### Data
 
-- RDS PostgreSQL, small burstable instance suitable for learning
+- RDS PostgreSQL, small burstable instance suitable for learning (example: `db.t4g.micro`)
 - 20 GB general-purpose SSD
 - Single-AZ by default
 - Publicly accessible false
 - Automated backup retention 1 day
 - Deletion protection false in dev
 - Final snapshot skipped only in dev
-- ElastiCache Redis/Valkey-compatible single-node cache suitable for learning
-- Encryption in transit where supported by the chosen client configuration
+- ElastiCache Redis single-node cache suitable for learning (example: `cache.t4g.micro`)
+- Encryption in transit enabled; the API sets `REDIS_TLS_ENABLED=true`
 
 ### Messaging and storage
 
@@ -796,7 +796,7 @@ Rules:
 - Add a specific `Name` tag to networking and human-visible resources.
 - Set `ExpiresOn` to the planned deletion date.
 - README must remind the operator to activate relevant cost-allocation tags in Billing.
-- No resource creation step may omit the tagging reminder.
+- Every created resource must carry the mandatory tag set.
 
 ## 17. Configuration contract
 
@@ -825,7 +825,7 @@ DATABASE_URL                 # secret
 AWS_REGION
 EXPORT_QUEUE_URL
 EXPORT_BUCKET_NAME
-SQS_WAIT_TIME_SECONDS=20
+SQS_WAIT_TIME_SECONDS        # default 20
 SQS_VISIBILITY_TIMEOUT_SECONDS
 LOG_LEVEL
 ```
@@ -901,7 +901,7 @@ infrastructure/terraform/
 
 Required variables:
 
-- aws_region
+- aws_region (example: `ap-southeast-1`)
 - project_name
 - environment
 - owner
@@ -1081,15 +1081,7 @@ When implementing this specification:
 8. Use placeholders and Terraform outputs.
 9. Include exact commands in README files.
 10. Include cleanup instructions prominently.
-11. Add tagging reminders to every manual AWS fallback instruction.
+11. Ensure every AWS resource carries the mandatory tag set.
 12. Prefer Terraform over console clicks for reproducibility.
 13. Report any deviation from this specification in a `DEVIATIONS.md` file.
-
-## 27. Authoritative AWS notes
-
-- ECS Fargate is suitable for running containers without managing EC2 hosts.
-- ECS Fargate services can use Application Load Balancers for HTTP/HTTPS traffic.
-- NAT Gateway is billed while provisioned and also for data processed; it must be explicitly deleted during cleanup.
-- Resource Explorer supports many AWS resource types, but an inventory check should also use service consoles, Tag Editor, and billing tools because no single inventory view guarantees complete cost detection.
-- Cost-allocation tags must be activated before they appear in cost reporting; activation is not retrospective.
 

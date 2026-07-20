@@ -4,10 +4,6 @@
 
 This is a hands-on AWS lab for deploying the CloudTask application specified in `application-spec.md`. Follow it in sequence. It covers account preparation, Terraform deployment, application release, validation, controlled failures, troubleshooting, and deletion of costly resources.
 
-The safest operating rule is:
-
-> Create through Terraform, tag everything, observe it, break it deliberately, repair it, and destroy it before ending the lab.
-
 ## 2. Cost warning
 
 This environment can incur charges. The most important potentially billable resources include:
@@ -22,8 +18,6 @@ This environment can incur charges. The most important potentially billable reso
 - S3 storage and requests
 - ECR image storage
 - SQS requests
-
-Route tables, security groups, subnets, Network ACLs, and the VPC itself do not normally have standalone hourly charges, but resources connected through them may be billable.
 
 Use a short-lived `dev` environment. Plan to destroy it the same day unless you intentionally need it longer.
 
@@ -41,9 +35,9 @@ CostCenter=personal-learning
 ExpiresOn=<planned deletion date, YYYY-MM-DD>
 ```
 
-### Tag reminder used throughout this runbook
+### Tagging rule
 
-At every creation step, verify that Terraform provider `default_tags` is active. For any manual resource, add all mandatory tags immediately before continuing.
+Verify that Terraform provider `default_tags` is active so every resource is tagged automatically. For any manually created resource, add all mandatory tags immediately.
 
 ## 4. Day 0 — account safety and local preparation
 
@@ -58,7 +52,7 @@ export AWS_REGION=ap-southeast-1
 export AWS_DEFAULT_REGION="$AWS_REGION"
 ```
 
-**Tag reminder:** Record the region in the project README and do not create project resources in a second region accidentally.
+**Note:** Record the region in the project README and do not create project resources in a second region accidentally.
 
 ### Step 4.2 — secure the AWS account
 
@@ -88,7 +82,7 @@ In **Billing and Cost Management -> Budgets**:
 
 Budgets may not stop resources automatically. They are alerts, not a guaranteed kill switch.
 
-**Tag reminder:** Budgets themselves do not replace resource tags. Activate the project-related tags under Billing -> Cost allocation tags after resources begin appearing.
+**Note:** Activate project cost-allocation tags under Billing -> Cost allocation tags after resources begin appearing.
 
 ### Step 4.4 — enable Resource Explorer
 
@@ -122,10 +116,10 @@ jq --version
 ### Step 4.6 — clone and initialize the repository
 
 ```bash
- git clone <your-repository-url> cloudtask
- cd cloudtask
- pnpm install
- cp .env.example .env
+git clone <your-repository-url> cloudtask
+cd cloudtask
+pnpm install
+cp .env.example .env
 ```
 
 Do not put production AWS secrets in `.env`.
@@ -237,7 +231,7 @@ provider "aws" {
 }
 ```
 
-**Tag reminder:** Do not run `terraform apply` until `expires_on` is populated and provider default tags are visible in the plan.
+**Before applying:** ensure `expires_on` is set and provider default tags are visible in the plan.
 
 ### Step 6.2 — create `terraform.tfvars`
 
@@ -248,13 +242,13 @@ aws_region              = "ap-southeast-1"
 project_name            = "cloudtask"
 environment             = "dev"
 owner                   = "jubaer"
-expires_on              = "2026-07-20"
+expires_on              = "2026-12-31" # set to your planned deletion date
 enable_nat_gateway      = true
-api_image_tag            = "bootstrap"
-worker_image_tag         = "bootstrap"
-web_image_tag            = "bootstrap"
+api_image_tag           = "bootstrap"
+worker_image_tag        = "bootstrap"
+web_image_tag           = "bootstrap"
 database_instance_class = "db.t4g.micro"
-redis_node_type          = "cache.t4g.micro"
+redis_node_type         = "cache.t4g.micro"
 ```
 
 Verify current regional support and price before selecting instance classes. If an ARM class is selected, container images must support ARM64 or use architecture-compatible settings.
@@ -285,7 +279,7 @@ Check:
 - S3 export bucket has a 7-day expiration lifecycle rule.
 - No accidental multi-AZ RDS or large instance class.
 
-**Tag reminder:** Search the plan output for `Project`, `Environment`, `Owner`, and `ExpiresOn` before approval.
+**Before approval:** search the plan output for `Project`, `Environment`, `Owner`, and `ExpiresOn`.
 
 ## 7. Day 3 — create foundational AWS resources
 
@@ -337,8 +331,6 @@ Private data route table:
 VPC CIDR -> local
 ```
 
-**Tag reminder:** Open each VPC, subnet, route table, Internet Gateway, NAT Gateway, and Elastic IP and verify the mandatory tags plus a meaningful `Name` tag.
-
 ### Step 7.3 — inspect security groups
 
 Verify all six security groups (ALB, web, API, worker, RDS, Redis):
@@ -350,13 +342,9 @@ Verify all six security groups (ALB, web, API, worker, RDS, Redis):
 - RDS: inbound 5432 only from API and worker security groups.
 - Redis: inbound 6379 only from the API security group.
 
-**Tag reminder:** Every security group must have `Project=cloudtask`, `Environment=dev`, and `ExpiresOn`.
-
 ### Step 7.4 — inspect ECR
 
 Open ECR and verify repositories exist for web, API, and worker.
-
-**Tag reminder:** Verify all ECR repositories carry the mandatory tag set.
 
 ### Step 7.5 — inspect databases and queues
 
@@ -370,7 +358,7 @@ Verify:
 - S3 export bucket has a lifecycle rule expiring objects after 7 days (the spec's dev retention).
 - Secrets Manager secrets exist without printing their values.
 
-**Tag reminder:** RDS, subnet groups, ElastiCache, SQS, S3, and Secrets Manager resources must be tagged where supported. Some generated child resources may not support all tags; record exceptions.
+**Note:** Some generated child resources may not support all tags; record any exceptions.
 
 ## 8. Day 3 — build and push images
 
@@ -432,7 +420,7 @@ trivy image "$WEB_REPO:$IMAGE_TAG"
 
 Fix critical application vulnerabilities before treating the deployment as complete.
 
-**Tag reminder:** Image tags are not AWS resource tags. Keep ECR repository resource tags and use immutable Docker image tags separately.
+**Note:** ECR repository resource tags and Docker image tags are separate; use immutable image tags for deployments.
 
 ## 9. Day 3 — deploy ECS services
 
@@ -468,7 +456,7 @@ Verify:
 
 Inspect service events for errors.
 
-**Tag reminder:** Verify ECS cluster, services, and task definitions/revisions are tagged where supported. Enable tag propagation from service to tasks.
+**Note:** Enable tag propagation from ECS service to tasks.
 
 ### Step 9.3 — inspect CloudWatch logs
 
@@ -484,8 +472,6 @@ Verify:
 - Logs are JSON.
 - No secret value is printed.
 - Retention is 7 days.
-
-**Tag reminder:** Verify log groups are tagged and have finite retention.
 
 ## 10. Day 4 — production-style validation
 
@@ -532,8 +518,6 @@ Expected:
 6. Download through the presigned URL.
 7. Verify S3 object is not public.
 
-**Tag reminder:** Verify queue, DLQ, bucket, and objects' parent resources are discoverable with `tag:Project=cloudtask`. S3 object tags are optional for this lab unless implemented explicitly.
-
 ### Step 10.5 — readiness and health test
 
 ```bash
@@ -555,7 +539,7 @@ Open the `cloudtask-dev` CloudWatch dashboard and confirm widgets show data for:
 - ElastiCache (CPU, current connections)
 - Custom export metrics
 
-The custom metrics live in namespace `CloudTask/Dev`. After running at least one export, open **CloudWatch → Metrics → CloudTask/Dev** and confirm these appear:
+The custom metrics live in namespace `CloudTask/Dev`. After running at least one export, open **CloudWatch -> Metrics -> CloudTask/Dev** and confirm these appear:
 
 - `ExportsCompleted`
 - `ExportsFailed`
@@ -563,7 +547,7 @@ The custom metrics live in namespace `CloudTask/Dev`. After running at least one
 
 ### Step 10.7 — verify alarms and SNS topic
 
-Terraform creates an SNS topic (`cloudtask-dev-alerts`; email subscription is optional and added manually) and the specification's five alarms, all actioned to that topic. Confirm each exists in **CloudWatch → Alarms**:
+Terraform creates an SNS topic (`cloudtask-dev-alerts`; email subscription is optional and added manually) and the specification's five alarms, all actioned to that topic. Confirm each exists in **CloudWatch -> Alarms**:
 
 1. ALB target 5xx count > 5 in 5 minutes.
 2. API running task count < 1 for 2 periods.
@@ -575,9 +559,9 @@ Terraform creates an SNS topic (`cloudtask-dev-alerts`; email subscription is op
 
 Only perform one failure at a time. Record the start time, expected symptom, actual symptom, evidence, repair action, and resolution time.
 
-## Experiment A — stop the worker
+### Experiment A — stop the worker
 
-### Create failure
+#### Create failure
 
 Set worker desired count to zero temporarily:
 
@@ -590,7 +574,7 @@ aws ecs update-service \
 
 This manual drift is deliberate.
 
-### Test
+#### Test
 
 1. Request an export.
 2. Confirm API returns 202.
@@ -598,7 +582,7 @@ This manual drift is deliberate.
 4. Confirm age of oldest message increases.
 5. Confirm the queue-age alarm eventually changes state if threshold is reached.
 
-### Troubleshoot
+#### Troubleshoot
 
 Check:
 
@@ -612,7 +596,7 @@ aws sqs get-queue-attributes \
   --attribute-names ApproximateNumberOfMessages ApproximateAgeOfOldestMessage
 ```
 
-### Repair
+#### Repair
 
 Restore through Terraform, not only CLI:
 
@@ -622,11 +606,9 @@ terraform apply
 
 Expected: worker returns to desired count 1 and drains the queue.
 
-**Tag reminder:** Manual service updates do not add resources, but confirm the affected ECS service still carries the project tags after repair.
+### Experiment B — deploy a nonexistent image tag
 
-## Experiment B — deploy a nonexistent image tag
-
-### Create failure
+#### Create failure
 
 Temporarily set API image tag to a nonexistent value:
 
@@ -640,7 +622,7 @@ Apply:
 terraform apply
 ```
 
-### Expected symptoms
+#### Expected symptoms
 
 - New task fails to pull the image.
 - ECS service events show image pull failure.
@@ -648,7 +630,7 @@ terraform apply
 - Existing healthy API task should remain if rolling-deployment settings and capacity permit.
 - Deployment circuit breaker should fail and roll back when configured.
 
-### Troubleshoot
+#### Troubleshoot
 
 Inspect:
 
@@ -665,26 +647,26 @@ aws ecs list-tasks \
 
 Then describe the newest stopped task.
 
-### Repair
+#### Repair
 
 Restore the known-good Git SHA and apply Terraform.
 
-**Tag reminder:** Do not create an ad hoc replacement service. Repair the tagged Terraform-managed service.
+**Note:** Repair the Terraform-managed service; do not create an ad hoc replacement.
 
-## Experiment C — break the ALB health check path
+### Experiment C — break the ALB health check path
 
-### Create failure
+#### Create failure
 
 Temporarily change target-group health check path from `/health` to `/wrong-health` through Terraform.
 
-### Expected symptoms
+#### Expected symptoms
 
 - Targets become unhealthy.
 - ALB returns 503 when no healthy target remains.
 - ECS may repeatedly replace tasks depending on service configuration.
 - Target health reason shows response-code mismatch.
 
-### Troubleshoot
+#### Troubleshoot
 
 ```bash
 TG_ARN=$(terraform output -raw api_target_group_arn)
@@ -693,25 +675,23 @@ aws elbv2 describe-target-health --target-group-arn "$TG_ARN"
 
 Review API logs to confirm the wrong path is requested.
 
-### Repair
+#### Repair
 
 Set the path back to `/health` and apply.
 
-**Tag reminder:** Confirm target group and ALB tags remain intact after the update.
+### Experiment D — remove worker SQS permission
 
-## Experiment D — remove worker SQS permission
-
-### Create failure
+#### Create failure
 
 Through Terraform, temporarily remove `sqs:ReceiveMessage` from the worker task role policy and deploy a new task definition/service update.
 
-### Expected symptoms
+#### Expected symptoms
 
 - Worker logs show AccessDenied.
 - Queue messages accumulate.
 - Worker process should remain alive with controlled retry/backoff rather than crash-looping rapidly.
 
-### Troubleshoot
+#### Troubleshoot
 
 Check:
 
@@ -720,7 +700,7 @@ Check:
 - IAM policy simulator or IAM policy document.
 - CloudTrail event history for denied calls when available.
 
-### Repair
+#### Repair
 
 Restore minimum required actions:
 
@@ -731,9 +711,9 @@ Restore minimum required actions:
 
 Apply Terraform and verify queue drains.
 
-**Tag reminder:** IAM roles and policies should use clear `cloudtask-dev-*` names. IAM tag-search support differs by tool; verify tags directly in IAM where supported.
+**Note:** Name IAM roles and policies `cloudtask-dev-*`; IAM tag-search support varies by tool.
 
-## Experiment E — force application errors
+### Experiment E — force application errors
 
 Create an explicitly dev-only endpoint or feature flag such as:
 
@@ -755,7 +735,7 @@ Expected:
 
 Repair by disabling the flag and releasing a new task definition.
 
-## Experiment F — Redis outage simulation
+### Experiment F — Redis outage simulation
 
 Because ElastiCache actions may create operational risk and take time, prefer application-level simulation:
 
@@ -771,9 +751,9 @@ Expected:
 
 Repair using Terraform.
 
-**Tag reminder:** Never create a second untagged Redis cluster as a shortcut.
+**Note:** Do not create a second Redis cluster as a shortcut.
 
-## Experiment G — database connectivity failure
+### Experiment G — database connectivity failure
 
 Temporarily remove API/worker ingress from the RDS security group using Terraform.
 
@@ -788,9 +768,7 @@ Repair the security-group references through Terraform.
 
 Do not make RDS publicly accessible for troubleshooting.
 
-**Tag reminder:** Verify both RDS and its security group retain mandatory tags after repair.
-
-## Experiment H — poison message and DLQ
+### Experiment H — poison message and DLQ
 
 Send a deliberately invalid message to the queue:
 
@@ -819,7 +797,7 @@ After learning, purge or delete through the final Terraform destroy. Do not manu
 
 ## 12. Troubleshooting decision tree
 
-## Application URL does not open
+### Application URL does not open
 
 Check in order:
 
@@ -839,7 +817,7 @@ aws elbv2 describe-load-balancers
 aws ecs describe-services --cluster cloudtask-dev --services cloudtask-dev-web cloudtask-dev-api
 ```
 
-## ECS task remains pending or stops
+### ECS task remains pending or stops
 
 Inspect:
 
@@ -853,7 +831,7 @@ Inspect:
 - CPU/memory combination validity
 - Secrets Manager permissions
 
-## `ResourceInitializationError`
+### `ResourceInitializationError`
 
 Common causes:
 
@@ -863,7 +841,7 @@ Common causes:
 - Execution role missing permissions.
 - Secret ARN or log group missing.
 
-## ALB target unhealthy
+### ALB target unhealthy
 
 Check:
 
@@ -874,7 +852,7 @@ Check:
 - Application listens on `0.0.0.0`.
 - Health-check success code matcher.
 
-## RDS connection timeout
+### RDS connection timeout
 
 Check:
 
@@ -888,7 +866,7 @@ Check:
 
 Do not solve this by opening port 5432 to the internet.
 
-## Redis timeout
+### Redis timeout
 
 Check:
 
@@ -898,7 +876,7 @@ Check:
 - DNS resolution works.
 - Application fallback is functioning.
 
-## SQS queue grows
+### SQS queue grows
 
 Check:
 
@@ -909,7 +887,7 @@ Check:
 - Poison messages and DLQ count.
 - Database or S3 errors preventing completion.
 
-## S3 upload AccessDenied
+### S3 upload AccessDenied
 
 Check:
 
@@ -1205,14 +1183,4 @@ You have completed the lab when you can explain and demonstrate:
 8. How CloudWatch exposes failure symptoms.
 9. How Terraform detects and repairs manual drift.
 10. How to prove that costly resources have been deleted.
-
-## 19. AWS documentation basis
-
-This runbook follows current AWS guidance that:
-
-- Fargate charges are based on allocated task CPU, memory, OS/architecture, and runtime.
-- NAT Gateway incurs hourly and per-GB processing charges while provisioned.
-- ALBs incur load-balancer and usage charges and can also consume billable public IPv4 addresses.
-- AWS tagging supports cost allocation, operations, automation, and resource organization.
-- Resource Explorer supports many resource types but should be combined with direct service checks for cleanup assurance.
 
