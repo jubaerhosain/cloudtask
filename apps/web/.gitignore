@@ -1,0 +1,4 @@
+/.next/
+/out/
+/coverage/
+next-env.d.ts.bak
