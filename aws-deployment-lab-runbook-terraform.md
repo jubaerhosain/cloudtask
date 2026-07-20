@@ -242,7 +242,7 @@ aws_region              = "ap-southeast-1"
 project_name            = "cloudtask"
 environment             = "dev"
 owner                   = "jubaer"
-expires_on              = "2026-12-31" # set to your planned deletion date
+expires_on              = "<YYYY-MM-DD>" # set to your planned deletion date
 enable_nat_gateway      = true
 api_image_tag           = "bootstrap"
 worker_image_tag        = "bootstrap"
@@ -336,11 +336,13 @@ VPC CIDR -> local
 Verify all six security groups (ALB, web, API, worker, RDS, Redis):
 
 - ALB: inbound HTTP from internet; outbound to the web and API security groups.
-- Web: inbound only from the ALB security group; no database or Redis egress.
-- API: inbound only from the ALB security group; egress to RDS, Redis, and HTTPS.
+- Web: inbound only from the ALB security group (application port 3000); no database or Redis egress.
+- API: inbound only from the ALB security group (application port 3000); egress to RDS, Redis, and HTTPS.
 - Worker: no inbound rules; egress to RDS and HTTPS only (no Redis).
 - RDS: inbound 5432 only from API and worker security groups.
 - Redis: inbound 6379 only from the API security group.
+
+The web and API containers listen on port `3000` (the `PORT` env var default); the container port and ALB target groups use the same `3000`.
 
 ### Step 7.4 — inspect ECR
 
@@ -356,7 +358,7 @@ Verify:
 - SQS main queue and DLQ exist.
 - S3 export bucket is private.
 - S3 export bucket has a lifecycle rule expiring objects after 7 days (the spec's dev retention).
-- Secrets Manager secrets exist without printing their values.
+- The application secret `cloudtask/dev/application` exists (a JSON object holding `DATABASE_URL` and `JWT_SECRET`), verified without printing its value. Any RDS-managed master-password secret is a separate, AWS-owned secret and is expected in addition to this one.
 
 **Note:** Some generated child resources may not support all tags; record any exceptions.
 
@@ -472,6 +474,22 @@ Verify:
 - Logs are JSON.
 - No secret value is printed.
 - Retention is 7 days.
+
+### Step 9.4 — run database migrations against RDS
+
+The application does not self-migrate on startup, so initialize the RDS schema with a one-off ECS task before validation (this mirrors the manual runbook's Part G migration step):
+
+1. Open the API task definition created by Terraform.
+2. Run a one-off task with a command override, using the same image, private app subnets, `cloudtask-dev-api-sg` security group, execution role, API task role, secrets, and environment as the API service.
+3. Override the command with the migration command:
+
+```text
+pnpm --filter api migration:run
+```
+
+4. Run one task, watch its CloudWatch logs, and confirm exit code 0.
+
+Do not run migrations simultaneously from every API task. If a future Terraform-managed migration mechanism is added (for example an ECS task run via a null_resource / local-exec or a dedicated migration service), document it here and drop the manual one-off task.
 
 ## 10. Day 4 — production-style validation
 
@@ -657,7 +675,7 @@ Restore the known-good Git SHA and apply Terraform.
 
 #### Create failure
 
-Temporarily change target-group health check path from `/health` to `/wrong-health` through Terraform.
+Temporarily change target-group health check path from `/health` to `/wrong-health-path` through Terraform.
 
 #### Expected symptoms
 
@@ -794,6 +812,74 @@ aws sqs get-queue-attributes \
 ```
 
 After learning, purge or delete through the final Terraform destroy. Do not manually redrive an invalid message to the main queue.
+
+### Experiment I — block ALB-to-ECS traffic
+
+#### Create failure
+
+Through Terraform, temporarily remove or change the API security group inbound rule that allows port 3000 from the ALB security group, then apply.
+
+#### Expected symptoms
+
+- Target health checks time out.
+- The ALB cannot reach the API tasks.
+- Tasks may remain running because this is a network failure, not a process crash.
+
+#### Troubleshoot
+
+Validate the ALB listener port, target-group port, container port, the API task security group, and the source security-group reference:
+
+```bash
+TG_ARN=$(terraform output -raw api_target_group_arn)
+aws elbv2 describe-target-health --target-group-arn "$TG_ARN"
+```
+
+#### Repair
+
+Restore the port 3000 ingress from the ALB security group through Terraform. Never replace this with unrestricted public access merely to make the test pass.
+
+### Experiment J — use a wrong database password
+
+#### Create failure
+
+Change the password embedded in `DATABASE_URL` inside the `cloudtask/dev/application` Secrets Manager secret to an incorrect temporary value (save the current value first), then force a new deployment of the API and worker services so new tasks retrieve the changed secret.
+
+#### Expected symptoms
+
+- Tasks may start but fail readiness.
+- Logs report authentication failure without printing the password.
+- The API target may become unhealthy.
+
+#### Troubleshoot
+
+Distinguish authentication failures from network timeouts:
+
+- Authentication error: network path works, credentials are wrong.
+- Connection timeout: routing/security-group/DNS problem is more likely.
+
+#### Repair
+
+Restore the correct `DATABASE_URL` in Secrets Manager, force new deployments again, and confirm readiness and target health recover. Do not print the secret value to logs during troubleshooting.
+
+### Experiment K — remove private outbound routing
+
+This experiment demonstrates why private-app Fargate tasks need NAT or appropriate VPC endpoints.
+
+#### Create failure
+
+Through Terraform, temporarily remove the `0.0.0.0/0` route to the NAT Gateway from the private app route table, then force a new ECS deployment.
+
+#### Expected symptoms
+
+New tasks may fail to pull images from ECR, fetch secrets, create CloudWatch log streams, or reach SQS and other public AWS endpoints. Existing tasks may continue partially depending on cached state and open connections.
+
+#### Troubleshoot
+
+Use ECS service events and stopped-task reasons. Look for failures related to resource initialization, image pulling, secrets retrieval, and logging setup.
+
+#### Repair
+
+Restore the `0.0.0.0/0 → NAT Gateway` route through Terraform and force a new deployment.
 
 ## 12. Troubleshooting decision tree
 

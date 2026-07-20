@@ -777,20 +777,29 @@ aws ecr get-login-password --region <region> \
   | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com
 ```
 
+### Choose an immutable image tag
+
+Use a Git SHA as the image tag so every deploy references an immutable image (this matches the Terraform runbook convention):
+
+```bash
+IMAGE_TAG=$(git rev-parse --short HEAD)
+echo "$IMAGE_TAG"
+```
+
 ### Build and push the images
 
 ```bash
-docker build -f apps/web/Dockerfile -t cloudtask-web:lab .
-docker tag cloudtask-web:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:lab
+docker build -f apps/web/Dockerfile -t cloudtask-web:$IMAGE_TAG .
+docker tag cloudtask-web:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:$IMAGE_TAG
 
-docker build -f apps/api/Dockerfile -t cloudtask-api:lab .
-docker tag cloudtask-api:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:lab
+docker build -f apps/api/Dockerfile -t cloudtask-api:$IMAGE_TAG .
+docker tag cloudtask-api:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:$IMAGE_TAG
 
-docker build -f apps/worker/Dockerfile -t cloudtask-worker:lab .
-docker tag cloudtask-worker:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:lab
+docker build -f apps/worker/Dockerfile -t cloudtask-worker:$IMAGE_TAG .
+docker tag cloudtask-worker:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:$IMAGE_TAG
 ```
 
 If your machine builds ARM images but ECS uses x86_64, build explicitly for the correct platform:
@@ -938,7 +947,7 @@ Container settings:
 
 ```text
 Name: api
-Image URI: <api-ecr-uri>:lab
+Image URI: <api-ecr-uri>:<git-sha>
 Essential: Yes
 Container port: 3000/TCP
 ```
@@ -956,6 +965,7 @@ EXPORT_QUEUE_URL=<main-queue-url>
 EXPORT_BUCKET_NAME=<bucket-name>
 LOG_LEVEL=info
 CORS_ORIGINS=<application-url-or-comma-separated-origins>
+ENABLE_FAILURE_ENDPOINTS=false
 ```
 
 Secrets:
@@ -999,7 +1009,7 @@ Container:
 
 ```text
 Name: worker
-Image URI: <worker-ecr-uri>:lab
+Image URI: <worker-ecr-uri>:<git-sha>
 No inbound container port required
 ```
 
@@ -1046,7 +1056,7 @@ Container:
 
 ```text
 Name: web
-Image URI: <web-ecr-uri>:lab
+Image URI: <web-ecr-uri>:<git-sha>
 Essential: Yes
 Container port: 3000/TCP
 ```
@@ -1602,6 +1612,89 @@ Re-add to `cloudtask-dev-app-rt`:
 ```
 
 Then force a new deployment.
+
+---
+
+## 48.1. Failure drill 9 — remove worker SQS permission
+
+### Introduce failure
+
+1. Open `cloudtask-dev-worker-task-role`.
+2. Temporarily remove `sqs:ReceiveMessage` from the worker task-role policy.
+3. Force a new deployment of the worker service so new tasks pick up the changed role.
+
+### Observe
+
+- Worker logs show `AccessDenied`.
+- Queue messages accumulate.
+- The worker process should remain alive with controlled retry/backoff rather than crash-looping rapidly.
+
+### Troubleshoot
+
+Check:
+
+1. Worker CloudWatch logs.
+2. Worker task-role ARN.
+3. IAM policy simulator or the IAM policy document.
+4. CloudTrail event history for denied calls when available.
+
+### Restore
+
+Re-add the minimum required actions and force a new deployment; verify the queue drains:
+
+```text
+sqs:ReceiveMessage
+sqs:DeleteMessage
+sqs:ChangeMessageVisibility
+sqs:GetQueueAttributes
+```
+
+---
+
+## 48.2. Failure drill 10 — Redis outage simulation
+
+Because ElastiCache actions may create operational risk and take time, prefer application-level simulation.
+
+### Introduce failure
+
+Choose one:
+
+1. Set an invalid Redis endpoint in a new API task-definition revision and update the service, or
+2. Temporarily remove the port 6379 inbound rule from `cloudtask-dev-redis-sg`.
+
+### Observe
+
+- `/ready` reports degraded.
+- Project summaries still work using PostgreSQL.
+- Logs show connection errors with backoff.
+- The API does not crash repeatedly.
+
+### Restore
+
+Restore the correct Redis endpoint or re-add the `cloudtask-dev-redis-sg` inbound rule (port 6379 from `cloudtask-dev-api-sg`). Do not create a second Redis cluster as a shortcut.
+
+---
+
+## 48.3. Failure drill 11 — force application errors
+
+### Introduce failure
+
+1. Set `ENABLE_FAILURE_ENDPOINTS=true` in a new API task-definition revision and update the service.
+2. Authenticate, then call the dev-only endpoint more than five times:
+
+```text
+POST /api/v1/debug/fail?type=500
+```
+
+### Observe
+
+- The ALB target 5xx metric increases.
+- The 5xx alarm changes state when the threshold is met.
+- Logs contain request IDs and stack traces without secrets.
+
+### Restore
+
+Set `ENABLE_FAILURE_ENDPOINTS=false` (or remove it), release a new task definition, and confirm the alarm returns to OK. Never enable this endpoint in production.
 
 ---
 

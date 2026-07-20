@@ -366,6 +366,19 @@ UI requirements:
 - Confirmation before destructive actions.
 - No secret or internal AWS information exposed to the browser.
 
+### 6.8 Failure-injection endpoint (dev only)
+
+For controlled failure drills (observability and alarm testing), provide an explicitly dev-only endpoint:
+
+`POST /api/v1/debug/fail?type=500`
+
+Rules:
+
+- Enabled only when `ENABLE_FAILURE_ENDPOINTS=true`; the route must not be registered otherwise.
+- Protected by authentication.
+- Never enabled in production.
+- Returns the requested error class (for example `type=500`) so ALB 5xx metrics and alarms can be exercised.
+
 ## 7. Database design
 
 Use migrations; never rely on TypeORM `synchronize: true` outside tests.
@@ -553,12 +566,13 @@ SNS email notification is optional. Create the topic and expose its ARN; subscri
 
 ## 11. AWS architecture
 
+The browser reaches everything through a single Application Load Balancer, which routes by path to the web and API target groups (see Section 18).
+
 ```mermaid
 flowchart TB
     User[Browser] --> ALB[Application Load Balancer]
-    ALB --> API[ECS Fargate API tasks]
-    User --> WEB[Next.js web application]
-    WEB --> ALB
+    ALB -->|other paths| WEB[ECS Fargate web tasks]
+    ALB -->|/api/*, /health, /ready, /docs*| API[ECS Fargate API tasks]
 
     API --> RDS[(RDS PostgreSQL)]
     API --> REDIS[(ElastiCache Redis)]
@@ -570,7 +584,8 @@ flowchart TB
     WORKER --> S3[(S3 export bucket)]
     WORKER --> SECRETS
 
-    API --> CW[CloudWatch]
+    WEB --> CW[CloudWatch]
+    API --> CW
     WORKER --> CW
     ALB --> CW
     RDS --> CW
@@ -706,8 +721,10 @@ Default task sizes:
 
 - Internet-facing ALB
 - HTTP listener
-- Target group with target type `ip`
-- Health check path `/health`
+- Two target groups with target type `ip` (see the path-based routing in Section 18):
+  - API target group — health check path `/health`
+  - Web target group — health check path `/`
+- Listener rules: `/api/*`, `/health`, `/ready`, `/docs*` route to the API target group; all other paths route to the web target group
 
 HTTPS should be an optional extension using ACM and Route 53.
 
@@ -735,10 +752,12 @@ HTTPS should be an optional extension using ACM and Route 53.
 
 ### Secrets
 
-Store:
+Store a single application secret named `cloudtask/dev/application` containing a JSON object with:
 
-- Database username/password or full connection string
-- JWT signing secret
+- `DATABASE_URL` (full connection string)
+- `JWT_SECRET` (JWT signing secret)
+
+The API and worker map both keys from this one secret. If RDS is configured to generate a master-user password, that RDS-managed secret is a separate, AWS-owned secret and is not the application secret above.
 
 Do not store non-secret configuration in Secrets Manager.
 
@@ -790,6 +809,8 @@ CostCenter  = "personal-learning"
 ExpiresOn   = "YYYY-MM-DD"
 ```
 
+`ManagedBy` records how the resource was actually provisioned. For the Terraform deployment it is `terraform`; a resource created by hand (for example in the manual console runbook) must instead be tagged `manual-console` so the tag remains truthful.
+
 Rules:
 
 - Terraform provider `default_tags` must apply common tags automatically.
@@ -804,7 +825,7 @@ API environment variables:
 
 ```text
 NODE_ENV
-PORT
+PORT                         # default 3000
 DATABASE_URL                 # secret
 REDIS_HOST
 REDIS_PORT
@@ -815,6 +836,7 @@ EXPORT_QUEUE_URL
 EXPORT_BUCKET_NAME
 LOG_LEVEL
 CORS_ORIGINS
+ENABLE_FAILURE_ENDPOINTS     # dev only; default false
 ```
 
 Worker environment variables:
@@ -833,8 +855,12 @@ LOG_LEVEL
 Frontend environment variables:
 
 ```text
+NODE_ENV
+PORT                         # default 3000
 NEXT_PUBLIC_API_BASE_URL
 ```
+
+All three services (web, API, worker where applicable) listen on `PORT`, which defaults to `3000`; the ECS container port and the ALB target groups use the same `3000`.
 
 `DATABASE_URL` is the canonical database configuration for both the API and the worker. Do not use discrete `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` variables; the full connection string stored in Secrets Manager (Section 14) is the single source. Redis configuration (`REDIS_HOST`, `REDIS_PORT`, `REDIS_TLS_ENABLED`) applies to the API only — the worker does not connect to Redis.
 
