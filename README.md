@@ -62,6 +62,28 @@ pnpm test
 pnpm format
 ```
 
+## CI
+
+`.github/workflows/ci.yml` runs on every pull request and on pushes to
+`main`/`develop`: install (frozen lockfile), lint, type check, unit tests, build
+all apps, API integration tests against Postgres + Redis service containers, and
+a Trivy filesystem scan. `.github/workflows/release.yml` is the OIDC-based target
+workflow that builds and pushes production images to ECR (dormant until the
+`AWS_ROLE_ARN`/`AWS_REGION` repo variables are set).
+
+## Production images
+
+Each app ships a multi-stage Dockerfile with a `prod` target (non-root,
+production dependencies only, compiled JS):
+
+```bash
+docker build --target prod -f apps/api/Dockerfile -t cloudtask-api .
+docker build --target prod -f apps/worker/Dockerfile -t cloudtask-worker .
+docker build --target prod \
+  --build-arg NEXT_PUBLIC_API_BASE_URL=https://your-alb/api/v1 \
+  -f apps/web/Dockerfile -t cloudtask-web .
+```
+
 ## Deployment
 
 AWS resources are created by hand using

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cloudtask
+          POSTGRES_PASSWORD: cloudtask
+          POSTGRES_DB: cloudtask
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cloudtask -d cloudtask"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+
+    env:
+      # Make the API integration tests use the service containers instead of
+      # Testcontainers (see apps/api/test/utils/test-app.ts).
+      TEST_DATABASE_URL: postgres://cloudtask:cloudtask@localhost:5432/cloudtask
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: '6379'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: API integration tests (Postgres + Redis)
+        run: pnpm --filter @cloudtask/api test:e2e
+
+  security-scan:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          # Report findings without failing the learning-project build.
+          exit-code: '0'

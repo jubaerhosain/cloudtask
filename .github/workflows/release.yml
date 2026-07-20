@@ -1,0 +1,47 @@
+name: Build & Push Images
+
+# Target workflow (spec §21): builds production images and pushes immutable,
+# Git-SHA-tagged images to ECR using GitHub OIDC (no long-lived AWS keys).
+# Dormant until the repo variables/role below are configured; the initial
+# runbook may push images manually with local AWS credentials instead.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    # Only run when an OIDC role has been configured.
+    if: vars.AWS_ROLE_ARN != ''
+    strategy:
+      matrix:
+        app: [api, worker, web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push ${{ matrix.app }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          target: prod
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/cloudtask-${{ matrix.app }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
