@@ -14,6 +14,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { RateLimitGuard } from './ratelimit/rate-limit.guard';
 import { RateLimitModule } from './ratelimit/ratelimit.module';
 import { RedisModule } from './redis/redis.module';
+import { TasksModule } from './tasks/tasks.module';
 
 /**
  * Composition root. Global modules load first so their providers are available
@@ -29,6 +30,7 @@ import { RedisModule } from './redis/redis.module';
     RateLimitModule,
     AuthModule,
     ProjectsModule,
+    TasksModule,
     HealthModule,
     ...(process.env.ENABLE_FAILURE_ENDPOINTS === 'true' ? [DebugModule] : []),
   ],

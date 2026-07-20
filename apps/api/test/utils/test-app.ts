@@ -49,17 +49,25 @@ export async function createTestApp(): Promise<TestContext> {
   // referenced by class (not globs) so this loads cleanly under ts-jest.
   const { User } = await import('../../src/users/user.entity');
   const { Project } = await import('../../src/projects/project.entity');
+  const { Task } = await import('../../src/tasks/task.entity');
   const { CreateUsers1720000000000 } = await import(
     '../../src/database/migrations/1720000000000-CreateUsers'
   );
   const { CreateProjects1720000001000 } = await import(
     '../../src/database/migrations/1720000001000-CreateProjects'
   );
+  const { CreateTasks1720000002000 } = await import(
+    '../../src/database/migrations/1720000002000-CreateTasks'
+  );
   const migrator = new DataSource({
     type: 'postgres',
     url: databaseUrl,
-    entities: [User, Project],
-    migrations: [CreateUsers1720000000000, CreateProjects1720000001000],
+    entities: [User, Project, Task],
+    migrations: [
+      CreateUsers1720000000000,
+      CreateProjects1720000001000,
+      CreateTasks1720000002000,
+    ],
     synchronize: false,
   });
   await migrator.initialize();
