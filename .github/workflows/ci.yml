@@ -71,11 +71,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scanners: vuln,secret,misconfig
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          # Report findings without failing the learning-project build.
-          exit-code: '0'
+        # Run Trivy via its official image (deterministic, no action-version
+        # resolution). Reports CRITICAL/HIGH without failing the build.
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/repo" aquasec/trivy:latest \
+            fs --scanners vuln,secret,misconfig \
+            --severity CRITICAL,HIGH --ignore-unfixed --no-progress \
+            --exit-code 0 /repo

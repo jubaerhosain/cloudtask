@@ -47,6 +47,17 @@ export async function createTestApp(
   process.env.LOG_LEVEL = 'silent';
   process.env.CORS_ORIGINS = '';
 
+  // Flush Redis so rate-limit counters and cached summaries don't leak between
+  // suites when a shared Redis is reused (e.g. the CI service container). With
+  // per-suite Testcontainers this is a harmless no-op.
+  const Redis = (await import('ioredis')).default;
+  const flusher = new Redis({ host: redisHost, port: Number(redisPort ?? '6379') });
+  try {
+    await flusher.flushdb();
+  } finally {
+    await flusher.quit();
+  }
+
   // Run migrations against a temporary DataSource. Entities/migrations are
   // referenced by class (not globs) so this loads cleanly under ts-jest.
   const { User } = await import('../../src/users/user.entity');
