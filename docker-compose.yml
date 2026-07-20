@@ -47,10 +47,13 @@ services:
     volumes:
       - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'awslocal sqs list-queues && awslocal s3 ls || exit 1']
+      # Fast HTTP probe (curl ships in the image); the awslocal CLI spawns a
+      # Python process per call and exceeds the timeout on slower machines.
+      test: ['CMD-SHELL', 'curl -sf http://localhost:4566/_localstack/health || exit 1']
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 15
+      start_period: 20s
 
   # One-shot migration runner. Applies TypeORM migrations, then exits; api and
   # worker wait for it to complete successfully so they never race the schema.
