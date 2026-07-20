@@ -29,6 +29,14 @@ This file records intentional deviations from `application-spec.md` (per spec §
   documents all routes; zod DTO request bodies render without a detailed schema.
   Revisit if nestjs-zod ships a v11-compatible patch.
 
+## Local-only limitations
+
+- **Export download URL in local dev.** The presigned S3 URL is signed for the
+  LocalStack endpoint host (`localstack:4566`), which resolves inside the Docker
+  network but not from a host browser. In real AWS the URL is a public S3 URL and
+  works directly. The frontend renders the download link and the E2E test asserts
+  it appears; fetching the object from a host browser locally is out of scope.
+
 ## Resolved ambiguities (documented, not true deviations)
 
 - **DTO validation** uses `nestjs-zod` (`createZodDto` + global `ZodValidationPipe`)
