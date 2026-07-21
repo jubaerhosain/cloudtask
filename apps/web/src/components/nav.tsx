@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 import { useSession } from '../lib/use-session';
+import { ThemeToggle } from './theme-toggle';
 
 export function Nav(): React.ReactElement {
   const { user, token, logout } = useSession();
@@ -20,14 +21,17 @@ export function Nav(): React.ReactElement {
         <Link href={token ? '/projects' : '/'} className="text-lg font-bold">
           CloudTask
         </Link>
-        {token ? (
-          <div className="flex items-center gap-4 text-sm">
-            <span className="opacity-70">{user?.email}</span>
-            <button onClick={onLogout} className="underline">
-              Log out
-            </button>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-4 text-sm">
+          {token ? (
+            <>
+              <span className="opacity-70">{user?.email}</span>
+              <button onClick={onLogout} className="underline">
+                Log out
+              </button>
+            </>
+          ) : null}
+          <ThemeToggle />
+        </div>
       </nav>
     </header>
   );
