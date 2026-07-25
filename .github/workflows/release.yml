@@ -20,6 +20,9 @@ jobs:
     # Only run when an OIDC role has been configured.
     if: vars.AWS_ROLE_ARN != ''
     strategy:
+      # Images are independent; a transient failure in one app must not
+      # cancel the other builds.
+      fail-fast: false
       matrix:
         app: [api, worker, web]
     steps:
