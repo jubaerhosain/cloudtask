@@ -42,6 +42,6 @@ jobs:
           file: apps/${{ matrix.app }}/Dockerfile
           target: prod
           push: true
-          tags: ${{ steps.ecr.outputs.registry }}/cloudtask-${{ matrix.app }}:${{ github.sha }}
+          tags: ${{ steps.ecr.outputs.registry }}/cloudtask-dev-${{ matrix.app }}:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
