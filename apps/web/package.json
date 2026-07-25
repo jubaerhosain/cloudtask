@@ -1,0 +1,37 @@
+{
+  "name": "@cloudtask/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p ${PORT:-3000}",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:e2e": "playwright test",
+    "clean": "rm -rf .next .turbo coverage"
+  },
+  "dependencies": {
+    "@cloudtask/contracts": "workspace:*",
+    "@hookform/resolvers": "^3.10.0",
+    "@tanstack/react-query": "^5.62.0",
+    "next": "^15.1.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hook-form": "^7.54.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@cloudtask/eslint-config": "workspace:*",
+    "@cloudtask/tsconfig": "workspace:*",
+    "@playwright/test": "^1.49.1",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.8.2",
+    "vitest": "^2.1.8"
+  }
+}

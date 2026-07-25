@@ -6,7 +6,7 @@ This runbook deploys the CloudTask application from `application-spec.md` by cre
 
 It intentionally does **not** use Terraform, CloudFormation, CDK, Copilot, or other infrastructure-as-code tools. The objective is to understand how the AWS services connect and how to diagnose failures.
 
-This runbook builds the **same architecture the specification defines** — six subnets across three tiers, six security groups, separate API and worker task roles, and a web/API/worker service split — done by hand instead of with Terraform. Nothing in the specification is simplified away; only the creation method differs.
+This runbook builds the **same architecture the specification defines** — six subnets across three tiers, six security groups, separate API and worker task roles, and a web/API/worker service split — by hand instead of with Terraform. Only the creation method differs.
 
 The lab sequence is:
 
@@ -18,8 +18,6 @@ The lab sequence is:
 6. Introduce controlled failures.
 7. Troubleshoot and restore the system.
 8. Delete every costly resource.
-
-> Create manually, tag immediately, test deliberately, break safely, repair methodically, and clean up before finishing.
 
 ---
 
@@ -118,9 +116,9 @@ ExpiresOn=<YYYY-MM-DD>
 
 `ManagedBy=manual-console` is the one intentional difference from the specification's tagging contract (which uses `ManagedBy=terraform`), because this runbook creates resources by hand rather than through Terraform. Every other tag value matches the specification exactly.
 
-## Tag rule
+### Tagging rule
 
-**Do not click Create until you have opened the Tags section and added the mandatory tags.**
+This enforces the specification's §16 tagging contract. **Do not click Create until you have opened the Tags section and added the mandatory tags.**
 
 Some AWS resources do not support tags during their first creation screen. In that case:
 
@@ -146,7 +144,7 @@ ap-southeast-1
 
 Check the Region selector in the top-right corner before creating every regional resource.
 
-**Tag reminder:** Tags cannot protect you from accidentally creating resources in another Region. Record the selected Region in your notes.
+**Note:** Record the selected Region in your notes; creating resources in the wrong Region is a common mistake.
 
 ### Step 5.2 — account safety
 
@@ -273,8 +271,6 @@ Enable:
 - DNS resolution
 - DNS hostnames
 
-**Tag reminder:** Add all mandatory tags before creating the VPC.
-
 ### Verify
 
 Open the VPC and confirm:
@@ -313,8 +309,6 @@ For public subnets only:
 3. Enable automatic public IPv4 assignment if required for the selected design.
 
 Keep the private app and private data subnets with automatic public IPv4 assignment **disabled**.
-
-**Tag reminder:** Add the mandatory tags separately to every subnet.
 
 ---
 
@@ -389,8 +383,6 @@ Associate both private data subnets (`cloudtask-dev-data-a`, `cloudtask-dev-data
 
 Do **not** add any `0.0.0.0/0` route to this table. The data subnets must have no default internet route; RDS and Redis reach nothing outside the VPC.
 
-**Tag reminder:** Add all mandatory tags to all three route tables.
-
 ---
 
 ## 11. Choose private-subnet outbound access
@@ -433,7 +425,7 @@ You can instead create the required VPC endpoints, but multiple interface endpoi
 
 # Part C — Security groups
 
-The specification defines **six security groups** (ALB, web, API, worker, RDS, Redis). Create all six. Do not collapse the API and worker into one shared group — the worker has no inbound access and does not talk to Redis, and keeping them separate is part of the security model this lab teaches.
+The specification defines **six security groups** (ALB, web, API, worker, RDS, Redis). Create all six. Do not collapse the API and worker into one shared group — the worker has no inbound access and does not talk to Redis.
 
 ## 12. Create the ALB security group
 
@@ -462,8 +454,6 @@ TCP 3000 to cloudtask-dev-web-sg
 
 Reference the API and web security groups rather than opening `0.0.0.0/0`. (Create this rule after those groups exist, or create the groups first and return here.)
 
-**Tag reminder:** Add all mandatory tags.
-
 ---
 
 ## 13. Create the web security group
@@ -489,8 +479,6 @@ HTTPS 443 to 0.0.0.0/0   (AWS APIs and image pulls through NAT)
 ```
 
 The web container serves the Next.js frontend and calls the API through the ALB, so it needs no database or Redis egress.
-
-**Tag reminder:** Add all mandatory tags.
 
 ---
 
@@ -518,8 +506,6 @@ Redis      TCP 6379 to cloudtask-dev-redis-sg
 HTTPS      TCP 443  to 0.0.0.0/0   (AWS APIs and image pulls through NAT)
 ```
 
-**Tag reminder:** Add all mandatory tags.
-
 ---
 
 ## 15. Create the worker security group
@@ -546,8 +532,6 @@ HTTPS      TCP 443  to 0.0.0.0/0   (SQS, S3, ECR, Secrets Manager, CloudWatch th
 
 The worker does **not** reach Redis. Do not add a 6379 egress rule.
 
-**Tag reminder:** Add all mandatory tags.
-
 ---
 
 ## 16. Create the RDS security group
@@ -566,8 +550,6 @@ PostgreSQL TCP 5432  Source cloudtask-dev-worker-sg
 
 Do not use `0.0.0.0/0`.
 
-**Tag reminder:** Add all mandatory tags.
-
 ---
 
 ## 17. Create the Redis security group
@@ -585,8 +567,6 @@ Custom TCP 6379  Source cloudtask-dev-api-sg
 
 Only the API reaches Redis. Do not add the worker security group, and do not expose Redis publicly.
 
-**Tag reminder:** Add all mandatory tags.
-
 ---
 
 # Part D — Data and messaging services
@@ -603,8 +583,6 @@ VPC: cloudtask-dev-vpc
 
 Select both Availability Zones and the two **private data** subnets (`cloudtask-dev-data-a`, `cloudtask-dev-data-b`).
 
-**Tag reminder:** Add all mandatory tags when supported.
-
 ---
 
 ## 19. Create RDS PostgreSQL
@@ -620,7 +598,7 @@ Template: Free tier if eligible; otherwise Dev/Test
 DB identifier: cloudtask-dev-postgres
 Master username: cloudtask_admin
 Credentials: Self-managed or Secrets Manager
-Instance class: Smallest suitable burstable class available in your Region
+Instance class: db.t4g.micro (smallest suitable burstable class in your Region)
 Storage: 20 GB general-purpose (gp) SSD
 Public access: No
 VPC: cloudtask-dev-vpc
@@ -633,8 +611,6 @@ Multi-AZ: No for this temporary learning lab
 ```
 
 Use a strong generated password and store it securely. Prefer Secrets Manager if the application will read it at runtime.
-
-**Tag reminder:** Add all mandatory tags before creating the database.
 
 ### Record after creation
 
@@ -666,8 +642,6 @@ VPC: cloudtask-dev-vpc
 Subnets: cloudtask-dev-data-a, cloudtask-dev-data-b
 ```
 
-**Tag reminder:** Add all mandatory tags when supported.
-
 ---
 
 ## 21. Create ElastiCache Redis
@@ -678,17 +652,16 @@ Create a small development cache:
 
 ```text
 Name: cloudtask-dev-redis
-Deployment: Small development/single-node configuration
+Deployment: Single-node development
+Node type: cache.t4g.micro
 Multi-AZ: Disabled for the lab
 Automatic failover: Disabled for single-node lab
 VPC: cloudtask-dev-vpc
 Subnet group: cloudtask-dev-redis-subnets
 Security group: cloudtask-dev-redis-sg
 Port: 6379
-Encryption: Enable in transit where the application supports it
+Encryption: Enable in transit (the API sets REDIS_TLS_ENABLED=true)
 ```
-
-**Tag reminder:** Add all mandatory tags before creating the cache.
 
 ### Record
 
@@ -762,8 +735,6 @@ Maximum receives: 3
 Dead-letter queue: cloudtask-dev-export-dlq
 ```
 
-**Tag reminder:** Add all mandatory tags to both queues.
-
 ### Record
 
 Record:
@@ -806,20 +777,29 @@ aws ecr get-login-password --region <region> \
   | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com
 ```
 
+### Choose an immutable image tag
+
+Use a Git SHA as the image tag so every deploy references an immutable image (this matches the Terraform runbook convention):
+
+```bash
+IMAGE_TAG=$(git rev-parse --short HEAD)
+echo "$IMAGE_TAG"
+```
+
 ### Build and push the images
 
 ```bash
-docker build -f apps/web/Dockerfile -t cloudtask-web:lab .
-docker tag cloudtask-web:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:lab
+docker build -f apps/web/Dockerfile -t cloudtask-web:$IMAGE_TAG .
+docker tag cloudtask-web:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-web:$IMAGE_TAG
 
-docker build -f apps/api/Dockerfile -t cloudtask-api:lab .
-docker tag cloudtask-api:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:lab
+docker build -f apps/api/Dockerfile -t cloudtask-api:$IMAGE_TAG .
+docker tag cloudtask-api:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-api:$IMAGE_TAG
 
-docker build -f apps/worker/Dockerfile -t cloudtask-worker:lab .
-docker tag cloudtask-worker:lab <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:lab
-docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:lab
+docker build -f apps/worker/Dockerfile -t cloudtask-worker:$IMAGE_TAG .
+docker tag cloudtask-worker:$IMAGE_TAG <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:$IMAGE_TAG
+docker push <account-id>.dkr.ecr.<region>.amazonaws.com/cloudtask-dev-worker:$IMAGE_TAG
 ```
 
 If your machine builds ARM images but ECS uses x86_64, build explicitly for the correct platform:
@@ -828,7 +808,7 @@ If your machine builds ARM images but ECS uses x86_64, build explicitly for the 
 docker buildx build --platform linux/amd64 ...
 ```
 
-**Tag reminder:** Repository tags do not automatically tag images. Use meaningful immutable image tags such as a Git SHA when possible.
+**Note:** Repository tags do not tag images; use immutable image tags such as a Git SHA.
 
 ---
 
@@ -847,8 +827,6 @@ Attach the standard ECS task execution policy.
 If secrets are injected from Secrets Manager, add permission to read only the required secret ARNs. If a customer-managed KMS key protects the secrets, also grant the needed decrypt permission.
 
 This one execution role is shared by all three services (web, API, worker); it only pulls images, writes logs, and reads the referenced secrets.
-
-**Tag reminder:** Add all mandatory tags to the role.
 
 ---
 
@@ -887,8 +865,6 @@ Grant least-privilege permissions for:
 The worker does not have `sqs:SendMessage`.
 
 The web service uses no application task role beyond the execution role (or an empty task role); it needs no AWS data-plane permissions.
-
-**Tag reminder:** Add all mandatory tags to both roles.
 
 ---
 
@@ -933,8 +909,6 @@ Create three log groups using the specification's naming scheme:
 
 Set retention to **7 days** (the specification's retention for the learning environment).
 
-**Tag reminder:** Add all mandatory tags to each log group.
-
 ---
 
 ## 29. Create the ECS cluster
@@ -973,7 +947,7 @@ Container settings:
 
 ```text
 Name: api
-Image URI: <api-ecr-uri>:lab
+Image URI: <api-ecr-uri>:<git-sha>
 Essential: Yes
 Container port: 3000/TCP
 ```
@@ -991,6 +965,7 @@ EXPORT_QUEUE_URL=<main-queue-url>
 EXPORT_BUCKET_NAME=<bucket-name>
 LOG_LEVEL=info
 CORS_ORIGINS=<application-url-or-comma-separated-origins>
+ENABLE_FAILURE_ENDPOINTS=false
 ```
 
 Secrets:
@@ -1014,8 +989,6 @@ CMD-SHELL,curl -f http://localhost:3000/health || exit 1
 
 Ensure `curl` or `wget` actually exists in the production container before configuring this command.
 
-**Tag reminder:** Add mandatory tags to the task definition where supported.
-
 ---
 
 ## 31. Create the worker task definition
@@ -1036,7 +1009,7 @@ Container:
 
 ```text
 Name: worker
-Image URI: <worker-ecr-uri>:lab
+Image URI: <worker-ecr-uri>:<git-sha>
 No inbound container port required
 ```
 
@@ -1063,8 +1036,6 @@ Log group: /cloudtask/dev/worker
 Stream prefix: worker
 ```
 
-**Tag reminder:** Add mandatory tags.
-
 ---
 
 ## 32. Create the web task definition
@@ -1085,7 +1056,7 @@ Container:
 
 ```text
 Name: web
-Image URI: <web-ecr-uri>:lab
+Image URI: <web-ecr-uri>:<git-sha>
 Essential: Yes
 Container port: 3000/TCP
 ```
@@ -1104,8 +1075,6 @@ Logging:
 Log group: /cloudtask/dev/web
 Stream prefix: web
 ```
-
-**Tag reminder:** Add mandatory tags.
 
 ---
 
@@ -1140,8 +1109,6 @@ Success codes: 200
 ```
 
 Do not manually register an IP. ECS will register and deregister Fargate task IPs.
-
-**Tag reminder:** Add all mandatory tags to both target groups.
 
 ---
 
@@ -1317,7 +1284,7 @@ Use one of these manual approaches.
 4. Override the command with the application's migration command, for example:
 
 ```text
-pnpm migration:run
+pnpm --filter api migration:run
 ```
 
 5. Run one task.
@@ -1326,8 +1293,6 @@ pnpm migration:run
 8. Stop/delete the failed task if it remains visible; stopped task history will eventually expire.
 
 Do not run migrations simultaneously from every API task.
-
-**Tag reminder:** Add managed tags or task tags when the Run Task page permits it.
 
 ---
 
@@ -1650,7 +1615,92 @@ Then force a new deployment.
 
 ---
 
+## 48.1. Failure drill 9 — remove worker SQS permission
+
+### Introduce failure
+
+1. Open `cloudtask-dev-worker-task-role`.
+2. Temporarily remove `sqs:ReceiveMessage` from the worker task-role policy.
+3. Force a new deployment of the worker service so new tasks pick up the changed role.
+
+### Observe
+
+- Worker logs show `AccessDenied`.
+- Queue messages accumulate.
+- The worker process should remain alive with controlled retry/backoff rather than crash-looping rapidly.
+
+### Troubleshoot
+
+Check:
+
+1. Worker CloudWatch logs.
+2. Worker task-role ARN.
+3. IAM policy simulator or the IAM policy document.
+4. CloudTrail event history for denied calls when available.
+
+### Restore
+
+Re-add the minimum required actions and force a new deployment; verify the queue drains:
+
+```text
+sqs:ReceiveMessage
+sqs:DeleteMessage
+sqs:ChangeMessageVisibility
+sqs:GetQueueAttributes
+```
+
+---
+
+## 48.2. Failure drill 10 — Redis outage simulation
+
+Because ElastiCache actions may create operational risk and take time, prefer application-level simulation.
+
+### Introduce failure
+
+Choose one:
+
+1. Set an invalid Redis endpoint in a new API task-definition revision and update the service, or
+2. Temporarily remove the port 6379 inbound rule from `cloudtask-dev-redis-sg`.
+
+### Observe
+
+- `/ready` reports degraded.
+- Project summaries still work using PostgreSQL.
+- Logs show connection errors with backoff.
+- The API does not crash repeatedly.
+
+### Restore
+
+Restore the correct Redis endpoint or re-add the `cloudtask-dev-redis-sg` inbound rule (port 6379 from `cloudtask-dev-api-sg`). Do not create a second Redis cluster as a shortcut.
+
+---
+
+## 48.3. Failure drill 11 — force application errors
+
+### Introduce failure
+
+1. Set `ENABLE_FAILURE_ENDPOINTS=true` in a new API task-definition revision and update the service.
+2. Authenticate, then call the dev-only endpoint more than five times:
+
+```text
+POST /api/v1/debug/fail?type=500
+```
+
+### Observe
+
+- The ALB target 5xx metric increases.
+- The 5xx alarm changes state when the threshold is met.
+- Logs contain request IDs and stack traces without secrets.
+
+### Restore
+
+Set `ENABLE_FAILURE_ENDPOINTS=false` (or remove it), release a new task definition, and confirm the alarm returns to OK. Never enable this endpoint in production.
+
+---
+
 # Part I — Troubleshooting framework
+
+Symptom-indexed reference. Symptoms that a Part H drill already exercises point to that drill; S3 (no drill) keeps a full checklist.
 
 ## 49. ECS task will not start
 
@@ -1669,42 +1719,19 @@ Check:
 
 ## 50. ALB returns 503
 
-Check:
-
-1. Target group has a registered target.
-2. Target is healthy.
-3. ECS desired count is greater than zero.
-4. Container listens on `0.0.0.0`, not only `localhost`.
-5. Container port is 3000.
-6. Target group port is 3000.
-7. Health-check path returns 200.
-8. API/web security group allows port 3000 from the ALB security group.
-9. Listener path rule routes the requested path to the correct target group.
+See drills 1–2 (§41–42). Check: a healthy registered target, ECS desired count > 0, the container listening on `0.0.0.0`, container and target-group port 3000, health-check path returning 200, the API/web security group allowing 3000 from the ALB security group, and the listener path rule.
 
 ## 51. Database connection times out
 
-Likely network path problem:
-
-1. RDS is available.
-2. Endpoint is correct.
-3. RDS is in the correct VPC/subnet group (private data subnets).
-4. RDS security group permits the API and worker security groups.
-5. ECS task has the expected security group.
-6. Network ACLs were not restricted.
+See drill 3 (§43). Network-path problem: RDS availability and endpoint, RDS in the private-data subnet group, the RDS security group permitting the API/worker security groups, the ECS task's security group, and unmodified Network ACLs.
 
 ## 52. Database authentication fails
 
-Likely credential/configuration problem:
-
-1. `DATABASE_URL` username is correct.
-2. `DATABASE_URL` password is correct.
-3. Database name exists.
-4. The secret key maps to the intended environment variable.
-5. New tasks were deployed after a secret change.
+See drill 4 (§44). Credential problem: `DATABASE_URL` username/password, database name, correct secret-to-environment mapping, and a redeploy after any secret change.
 
 ## 53. Redis connection fails
 
-Check:
+See drill 10 (§48.2). Check:
 
 1. Redis endpoint, not IP.
 2. Port 6379.
@@ -1716,16 +1743,7 @@ Check:
 
 ## 54. SQS messages remain unprocessed
 
-Check:
-
-1. Worker desired count and running count.
-2. Worker logs.
-3. Queue URL and Region.
-4. Worker task-role permissions.
-5. Message format.
-6. Visibility timeout.
-7. DLQ redrive policy.
-8. Worker deletes messages only after successful work.
+See drills 5–6 (§45–46). Check worker desired/running count and logs, queue URL and Region, worker task-role permissions, message format, visibility timeout, DLQ redrive, and that the worker deletes messages only after successful work.
 
 ## 55. S3 upload fails
 
@@ -1786,8 +1804,6 @@ The specification requires a dashboard. Create one manually to match:
    - ElastiCache CPU and current connections
    - Custom export metrics from `CloudTask/Dev`
 
-**Tag reminder:** Add all mandatory tags to the dashboard where supported.
-
 ## 59. SNS topic and alarms
 
 ### SNS topic
@@ -1808,8 +1824,6 @@ Create the specification's five alarms and set their action to the `cloudtask-de
 3. SQS age of oldest message > 300 seconds.
 4. DLQ visible messages ≥ 1.
 5. RDS CPU > 80% for 10 minutes.
-
-**Tag reminder:** Add all mandatory tags to alarms where supported.
 
 Delete lab alarms, the dashboard, and the SNS topic during cleanup to avoid unnecessary clutter or charges.
 

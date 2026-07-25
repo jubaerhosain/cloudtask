@@ -1,0 +1,153 @@
+# CloudTask local development stack.
+#
+# Brings up Postgres, Redis, LocalStack (SQS + S3), and the three app services
+# (api, worker, web). App images install the full workspace at build time; only
+# each app's `src` is bind-mounted so hot reload works without clobbering the
+# image's pnpm node_modules.
+#
+# Host ports: web -> 3000, api -> 3001 (both containers listen on 3000).
+# The worker has no port (standalone SQS consumer).
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cloudtask
+      POSTGRES_PASSWORD: cloudtask
+      POSTGRES_DB: cloudtask
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cloudtask -d cloudtask']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  localstack:
+    # Community edition (free) — covers SQS + S3. The rolling `latest`/calendar
+    # tags are the license-gated build and exit with code 55 without a token.
+    image: localstack/localstack:3
+    environment:
+      SERVICES: sqs,s3
+      DEBUG: '0'
+    ports:
+      - '4566:4566'
+    volumes:
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    healthcheck:
+      # Fast HTTP probe (curl ships in the image); the awslocal CLI spawns a
+      # Python process per call and exceeds the timeout on slower machines.
+      test: ['CMD-SHELL', 'curl -sf http://localhost:4566/_localstack/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+
+  # One-shot migration runner. Applies TypeORM migrations, then exits; api and
+  # worker wait for it to complete successfully so they never race the schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    command: pnpm --filter @cloudtask/api migration:run
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://cloudtask:cloudtask@postgres:5432/cloudtask
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      DATABASE_URL: postgres://cloudtask:cloudtask@postgres:5432/cloudtask
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      REDIS_TLS_ENABLED: 'false'
+      JWT_SECRET: local-dev-only-not-a-real-secret-change-me
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      EXPORT_QUEUE_URL: http://localstack:4566/000000000000/cloudtask-exports
+      EXPORT_BUCKET_NAME: cloudtask-exports-local
+      LOG_LEVEL: debug
+      CORS_ORIGINS: http://localhost:3000
+      ENABLE_FAILURE_ENDPOINTS: 'true'
+    ports:
+      - '3001:3000'
+    volumes:
+      - ./apps/api/src:/app/apps/api/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: dev
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgres://cloudtask:cloudtask@postgres:5432/cloudtask
+      AWS_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      EXPORT_QUEUE_URL: http://localstack:4566/000000000000/cloudtask-exports
+      EXPORT_BUCKET_NAME: cloudtask-exports-local
+      SQS_WAIT_TIME_SECONDS: '20'
+      SQS_VISIBILITY_TIMEOUT_SECONDS: '60'
+      LOG_LEVEL: debug
+    volumes:
+      - ./apps/worker/src:/app/apps/worker/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3001/api/v1
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./apps/web/src:/app/apps/web/src:ro
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

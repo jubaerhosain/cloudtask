@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# test / coverage
+coverage/
+playwright-report/
+test-results/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# terraform (deferred this pass — pre-empt state leaks)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl

@@ -2,7 +2,7 @@
 
 ## 1. Document purpose
 
-This document is an implementation contract for an AI coding agent such as Claude. Build the application exactly as described unless a requirement is technically impossible. When a choice is unspecified, prefer the simplest production-style implementation that is secure, observable, testable, and inexpensive for a short-lived AWS learning environment.
+This document is an implementation contract for an AI coding agent such as Claude. Build the application exactly as described unless a requirement is technically impossible. When a choice is unspecified, prefer the simplest secure, testable implementation appropriate for a short-lived AWS learning environment.
 
 The project is intentionally designed to exercise realistic AWS services:
 
@@ -136,9 +136,9 @@ Do not use AWS CDK, CloudFormation, Serverless Framework, or AWS Copilot for the
 
 ## 6. Functional requirements
 
-## 6.1 Authentication
+### 6.1 Authentication
 
-### Registration
+#### Registration
 
 `POST /auth/register`
 
@@ -160,7 +160,7 @@ Rules:
 - Password must be hashed using Argon2id.
 - Never log passwords or password hashes.
 
-### Login
+#### Login
 
 `POST /auth/login`
 
@@ -185,7 +185,7 @@ JWT requirements:
 - Access token lifetime: 1 hour.
 - Every protected query must be scoped to the authenticated user.
 
-## 6.2 Projects
+### 6.2 Projects
 
 Project fields:
 
@@ -206,7 +206,7 @@ Endpoints:
 
 A user must never access another user's project.
 
-## 6.3 Tasks
+### 6.3 Tasks
 
 Task fields:
 
@@ -241,7 +241,7 @@ List filters:
 
 Default page size: 20. Maximum page size: 100.
 
-## 6.4 Project summary and Redis cache
+### 6.4 Project summary and Redis cache
 
 `GET /projects/:id/summary`
 
@@ -265,9 +265,9 @@ Cache behavior:
 - Invalidate the key after task create, update, or delete.
 - If Redis is unavailable, log a warning and compute from PostgreSQL. The API must remain functional.
 
-## 6.5 CSV export through SQS
+### 6.5 CSV export through SQS
 
-### Request export
+#### Request export
 
 `POST /projects/:id/exports`
 
@@ -317,7 +317,7 @@ Idempotency:
 - If an export is already `completed`, a repeated message must not create another file.
 - Use a database transaction or conditional status update to claim processing.
 
-### Export status
+#### Export status
 
 `GET /exports/:id`
 
@@ -330,14 +330,14 @@ Possible statuses:
 
 For a completed export, return a short-lived S3 presigned download URL valid for 5 minutes.
 
-## 6.6 Rate limiting
+### 6.6 Rate limiting
 
 - Limit login attempts to 10 per 5 minutes per IP.
 - Limit authenticated API calls to 120 per minute per user.
 - Use Redis when available.
 - Do not fail all requests if Redis is unavailable; use a conservative in-memory fallback for a single API task.
 
-## 6.7 Frontend pages
+### 6.7 Frontend pages
 
 Required routes:
 
@@ -365,6 +365,19 @@ UI requirements:
 - Clear loading, empty, error, and success states.
 - Confirmation before destructive actions.
 - No secret or internal AWS information exposed to the browser.
+
+### 6.8 Failure-injection endpoint (dev only)
+
+For controlled failure drills (observability and alarm testing), provide an explicitly dev-only endpoint:
+
+`POST /api/v1/debug/fail?type=500`
+
+Rules:
+
+- Enabled only when `ENABLE_FAILURE_ENDPOINTS=true`; the route must not be registered otherwise.
+- Protected by authentication.
+- Never enabled in production.
+- Returns the requested error class (for example `type=500`) so ALB 5xx metrics and alarms can be exercised.
 
 ## 7. Database design
 
@@ -549,16 +562,17 @@ Create alarms for:
 - DLQ visible messages >= 1
 - RDS CPU > 80% for 10 minutes
 
-SNS email notification is optional because email subscription confirmation complicates automated setup. Create the topic and expose its ARN; subscription can be added manually.
+SNS email notification is optional. Create the topic and expose its ARN; subscription can be added manually.
 
 ## 11. AWS architecture
+
+The browser reaches everything through a single Application Load Balancer, which routes by path to the web and API target groups (see the listener rules in Section 14).
 
 ```mermaid
 flowchart TB
     User[Browser] --> ALB[Application Load Balancer]
-    ALB --> API[ECS Fargate API tasks]
-    User --> WEB[Next.js web application]
-    WEB --> ALB
+    ALB -->|other paths| WEB[ECS Fargate web tasks]
+    ALB -->|/api/*, /health, /ready, /docs*| API[ECS Fargate API tasks]
 
     API --> RDS[(RDS PostgreSQL)]
     API --> REDIS[(ElastiCache Redis)]
@@ -570,7 +584,8 @@ flowchart TB
     WORKER --> S3[(S3 export bucket)]
     WORKER --> SECRETS
 
-    API --> CW[CloudWatch]
+    WEB --> CW[CloudWatch]
+    API --> CW
     WORKER --> CW
     ALB --> CW
     RDS --> CW
@@ -631,7 +646,7 @@ Outbound:
 
 - HTTPS 443 for AWS APIs and image pulls through NAT
 
-The web service serves the Next.js frontend and calls the API through the ALB, so it needs no database or Redis egress.
+The web service reaches the API through the ALB, so it needs no database or Redis egress.
 
 ### API security group
 
@@ -706,22 +721,24 @@ Default task sizes:
 
 - Internet-facing ALB
 - HTTP listener
-- Target group with target type `ip`
-- Health check path `/health`
+- Two target groups with target type `ip`:
+  - API target group — health check path `/health`
+  - Web target group — health check path `/`
+- Listener rules: `/api/*`, `/health`, `/ready`, `/docs*` route to the API target group; all other paths route to the web target group
 
 HTTPS should be an optional extension using ACM and Route 53.
 
 ### Data
 
-- RDS PostgreSQL, small burstable instance suitable for learning
+- RDS PostgreSQL, small burstable instance suitable for learning (example: `db.t4g.micro`)
 - 20 GB general-purpose SSD
 - Single-AZ by default
 - Publicly accessible false
 - Automated backup retention 1 day
 - Deletion protection false in dev
 - Final snapshot skipped only in dev
-- ElastiCache Redis/Valkey-compatible single-node cache suitable for learning
-- Encryption in transit where supported by the chosen client configuration
+- ElastiCache Redis single-node cache suitable for learning (example: `cache.t4g.micro`)
+- Encryption in transit enabled; the API sets `REDIS_TLS_ENABLED=true`
 
 ### Messaging and storage
 
@@ -735,10 +752,12 @@ HTTPS should be an optional extension using ACM and Route 53.
 
 ### Secrets
 
-Store:
+Store a single application secret named `cloudtask/dev/application` containing a JSON object with:
 
-- Database username/password or full connection string
-- JWT signing secret
+- `DATABASE_URL` (full connection string)
+- `JWT_SECRET` (JWT signing secret)
+
+The API and worker map both keys from this one secret. If RDS is configured to generate a master-user password, that RDS-managed secret is a separate, AWS-owned secret and is not the application secret above.
 
 Do not store non-secret configuration in Secrets Manager.
 
@@ -790,13 +809,15 @@ CostCenter  = "personal-learning"
 ExpiresOn   = "YYYY-MM-DD"
 ```
 
+`ManagedBy` records how the resource was actually provisioned. For the Terraform deployment it is `terraform`; a resource created by hand (for example in the manual console runbook) must instead be tagged `manual-console` so the tag remains truthful.
+
 Rules:
 
 - Terraform provider `default_tags` must apply common tags automatically.
 - Add a specific `Name` tag to networking and human-visible resources.
 - Set `ExpiresOn` to the planned deletion date.
 - README must remind the operator to activate relevant cost-allocation tags in Billing.
-- No resource creation step may omit the tagging reminder.
+- Every created resource must carry the mandatory tag set.
 
 ## 17. Configuration contract
 
@@ -804,7 +825,7 @@ API environment variables:
 
 ```text
 NODE_ENV
-PORT
+PORT                         # default 3000
 DATABASE_URL                 # secret
 REDIS_HOST
 REDIS_PORT
@@ -815,6 +836,7 @@ EXPORT_QUEUE_URL
 EXPORT_BUCKET_NAME
 LOG_LEVEL
 CORS_ORIGINS
+ENABLE_FAILURE_ENDPOINTS     # dev only; default false
 ```
 
 Worker environment variables:
@@ -825,7 +847,7 @@ DATABASE_URL                 # secret
 AWS_REGION
 EXPORT_QUEUE_URL
 EXPORT_BUCKET_NAME
-SQS_WAIT_TIME_SECONDS=20
+SQS_WAIT_TIME_SECONDS        # default 20
 SQS_VISIBILITY_TIMEOUT_SECONDS
 LOG_LEVEL
 ```
@@ -833,8 +855,12 @@ LOG_LEVEL
 Frontend environment variables:
 
 ```text
+NODE_ENV
+PORT                         # default 3000
 NEXT_PUBLIC_API_BASE_URL
 ```
+
+All three services (web, API, worker where applicable) listen on `PORT`, which defaults to `3000`; the ECS container port and the ALB target groups use the same `3000`.
 
 `DATABASE_URL` is the canonical database configuration for both the API and the worker. Do not use discrete `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` variables; the full connection string stored in Secrets Manager (Section 14) is the single source. Redis configuration (`REDIS_HOST`, `REDIS_PORT`, `REDIS_TLS_ENABLED`) applies to the API only — the worker does not connect to Redis.
 
@@ -865,12 +891,9 @@ Choose one:
 1. Deploy Next.js as a standalone container, or
 2. Export a static frontend to S3/CloudFront if no server-only feature is required.
 
-For the first implementation, use the Next.js standalone container so the monorepo and deployment workflow stay consistent. A second ALB target group is optional; the simplest acceptable design is one web service and one API service with path-based routing:
+For the first implementation, use the Next.js standalone container so the monorepo and deployment workflow stay consistent. Deploy one web service and one API service behind the two ALB target groups, using the path-based routing defined in Section 14.
 
-- `/api/*`, `/health`, `/ready`, `/docs*` -> API target group
-- all other paths -> web target group
-
-If this approach is used, create separate ECS services for web, API, and worker. The worker has no load balancer.
+Create separate ECS services for web, API, and worker. The worker has no load balancer.
 
 ## 19. Terraform module structure
 
@@ -901,7 +924,7 @@ infrastructure/terraform/
 
 Required variables:
 
-- aws_region
+- aws_region (example: `ap-southeast-1`)
 - project_name
 - environment
 - owner
@@ -1081,15 +1104,7 @@ When implementing this specification:
 8. Use placeholders and Terraform outputs.
 9. Include exact commands in README files.
 10. Include cleanup instructions prominently.
-11. Add tagging reminders to every manual AWS fallback instruction.
+11. Follow the Section 16 tagging contract for every resource.
 12. Prefer Terraform over console clicks for reproducibility.
 13. Report any deviation from this specification in a `DEVIATIONS.md` file.
-
-## 27. Authoritative AWS notes
-
-- ECS Fargate is suitable for running containers without managing EC2 hosts.
-- ECS Fargate services can use Application Load Balancers for HTTP/HTTPS traffic.
-- NAT Gateway is billed while provisioned and also for data processed; it must be explicitly deleted during cleanup.
-- Resource Explorer supports many AWS resource types, but an inventory check should also use service consoles, Tag Editor, and billing tools because no single inventory view guarantees complete cost detection.
-- Cost-allocation tags must be activated before they appear in cost reporting; activation is not retrospective.
 
