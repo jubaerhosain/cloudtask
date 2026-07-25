@@ -33,8 +33,11 @@ Thumbs.db
 .idea/
 *.swp
 
-# terraform (deferred this pass — pre-empt state leaks)
+# terraform — state and per-operator config stay local; the provider lock
+# file (.terraform.lock.hcl) IS committed for reproducible provider versions.
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+terraform.tfvars
+tfplan
+terraform-outputs.json

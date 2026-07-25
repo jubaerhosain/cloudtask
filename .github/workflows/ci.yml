@@ -65,6 +65,31 @@ jobs:
       - name: API integration tests (Postgres + Redis)
         run: pnpm --filter @cloudtask/api test:e2e
 
+  terraform-checks:
+    name: Terraform fmt & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infrastructure/terraform
+
+      - name: terraform validate (bootstrap)
+        run: |
+          terraform -chdir=infrastructure/terraform/bootstrap init -backend=false
+          terraform -chdir=infrastructure/terraform/bootstrap validate
+
+      - name: terraform validate (dev environment)
+        # -backend=false needs no AWS credentials or state; validating the dev
+        # environment transitively validates every local module.
+        run: |
+          terraform -chdir=infrastructure/terraform/environments/dev init -backend=false
+          terraform -chdir=infrastructure/terraform/environments/dev validate
+
   security-scan:
     name: Trivy filesystem scan
     runs-on: ubuntu-latest

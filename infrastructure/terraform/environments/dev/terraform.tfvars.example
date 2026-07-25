@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored.
+
+aws_region   = "ap-south-1"
+project_name = "cloudtask"
+environment  = "dev"
+owner        = "jubaer"
+
+# When this environment should be gone (tag only — destroy is still manual).
+expires_on = "2026-07-28"
+
+# Required for tasks to reach ECR/Secrets Manager/SQS/S3 from private subnets.
+enable_nat_gateway = true
+
+# Set false if the AWS account already has a GitHub OIDC provider.
+create_oidc_provider = true
+
+# Leave at "bootstrap": services start at desired_count = 0, so the placeholder
+# image is never pulled. CI registers real git-SHA revisions and scales up on
+# the first release run.
+api_image_tag    = "bootstrap"
+worker_image_tag = "bootstrap"
+web_image_tag    = "bootstrap"
+desired_count    = 0
+
+database_instance_class = "db.t4g.micro"
+redis_node_type         = "cache.t4g.micro"
