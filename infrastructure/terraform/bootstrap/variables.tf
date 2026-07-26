@@ -16,7 +16,7 @@ variable "owner" {
   default     = "jubaer"
 }
 
-variable "expires_on" {
-  description = "ExpiresOn tag (YYYY-MM-DD) signalling when resources should be gone"
+variable "deploy_role_arn" {
+  description = "IAM role Terraform assumes for all AWS operations (trusts the owner's IAM user)"
   type        = string
 }

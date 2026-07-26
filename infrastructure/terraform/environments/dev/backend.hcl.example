@@ -1,0 +1,12 @@
+# Copy to backend.hcl and adjust. backend.hcl is gitignored (it holds the
+# account-specific state bucket name and deploy role ARN).
+# Used at init time: terraform init -backend-config=backend.hcl
+
+# Bucket created by ../../bootstrap (terraform output state_bucket_name).
+bucket = "cloudtask-terraform-state-<account-id>"
+
+# Same console-managed role the provider assumes (see terraform.tfvars).
+assume_role = {
+  role_arn     = "arn:aws:iam::<account-id>:role/cloudtask-terraform-deploy"
+  session_name = "terraform"
+}

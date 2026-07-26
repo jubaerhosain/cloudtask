@@ -1,9 +1,14 @@
-# Terraform state backend: S3 bucket + DynamoDB lock table.
+# Terraform state backend: S3 bucket with native lockfile locking (use_lockfile).
 # This stack uses LOCAL state on purpose — it holds no secrets and exists only
-# so environments/dev can use the S3 backend with DynamoDB locking.
+# so environments/dev can use the S3 backend.
 
 provider "aws" {
   region = var.aws_region
+
+  assume_role {
+    role_arn     = var.deploy_role_arn
+    session_name = "terraform"
+  }
 
   default_tags {
     tags = {
@@ -13,7 +18,6 @@ provider "aws" {
       ManagedBy   = "terraform"
       Purpose     = "aws-learning"
       CostCenter  = "personal-learning"
-      ExpiresOn   = var.expires_on
     }
   }
 }
@@ -52,15 +56,4 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
-}
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "${var.project_name}-terraform-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
 }

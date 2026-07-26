@@ -103,19 +103,25 @@ all configuration from environment variables; in AWS, `DATABASE_URL` and
 `JWT_SECRET` are injected from the Secrets Manager secret
 `cloudtask/dev/application`.
 
-**Terraform runs locally** (state in S3 with DynamoDB locking); CI never
-applies. Bootstrap, in order:
+**Terraform runs locally** (state in S3 with native S3 lockfile locking); CI
+never applies. Every Terraform run assumes the console-managed IAM role
+`cloudtask-terraform-deploy` (its trust policy allows the owner's IAM user, so
+the user credentials only need `sts:AssumeRole`). Account-specific values stay
+out of git: the role ARN goes in the gitignored `terraform.tfvars` (provider)
+and `backend.hcl` (state backend), both copied from their `.example` files in
+`environments/dev/`. Bootstrap, in order:
 
 ```bash
-# 1. State backend (local state; creates the S3 state bucket + lock table)
+# 1. State backend (local state; creates the S3 state bucket)
 cd infrastructure/terraform/bootstrap
-terraform init && terraform apply
-terraform output state_bucket_name   # put into ../environments/dev/backend.tf
+terraform init && terraform apply   # prompts for deploy_role_arn
+terraform output state_bucket_name  # put into ../environments/dev/backend.hcl
 
 # 2. The environment (services start at desired_count 0)
 cd ../environments/dev
-cp terraform.tfvars.example terraform.tfvars   # adjust expires_on etc.
-terraform init && terraform apply
+cp terraform.tfvars.example terraform.tfvars   # set deploy_role_arn etc.
+cp backend.hcl.example backend.hcl             # set bucket + role ARN
+terraform init -backend-config=backend.hcl && terraform apply
 
 # 3. Wire up CI (un-gates the Release workflow)
 gh variable set AWS_ROLE_ARN  --body "$(terraform output -raw github_ci_role_arn)"

@@ -5,8 +5,10 @@ project_name = "cloudtask"
 environment  = "dev"
 owner        = "jubaer"
 
-# When this environment should be gone (tag only — destroy is still manual).
-expires_on = "2026-07-28"
+# Role Terraform assumes for every AWS call (created manually in the console;
+# trust policy allows your IAM user). Also set role_arn in backend.hcl
+# (copy from backend.hcl.example).
+deploy_role_arn = "arn:aws:iam::<account-id>:role/cloudtask-terraform-deploy"
 
 # Required for tasks to reach ECR/Secrets Manager/SQS/S3 from private subnets.
 enable_nat_gateway = true

@@ -39,5 +39,6 @@ Thumbs.db
 *.tfstate.*
 .terraform/
 terraform.tfvars
+backend.hcl
 tfplan
 terraform-outputs.json
