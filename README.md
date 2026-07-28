@@ -47,8 +47,8 @@ pnpm install       # installs the whole workspace
 docker compose up --build
 ```
 
-- Web: http://localhost:3000
-- API: http://localhost:3001 (health: http://localhost:3001/health)
+- Web: http://localhost:3000 (health: http://localhost:3000/healthz)
+- API: http://localhost:3001 (health: http://localhost:3001/health, readiness: http://localhost:3001/ready)
 - Postgres: localhost:5432 · Redis: localhost:6379 · LocalStack: localhost:4566
 
 > The API/worker connect to Postgres, Redis (API only), and LocalStack (SQS/S3).
@@ -94,6 +94,11 @@ docker build --target prod \
 ```
 
 ## Deployment
+
+> New to Terraform? Start with
+> [`infrastructure/terraform/docs/`](./infrastructure/terraform/docs/README.md) — a
+> beginner-oriented guide to this stack: an HCL primer, architecture diagrams, a file-by-file
+> walkthrough, per-module rationale, and an operations runbook.
 
 Infrastructure is Terraform-managed under `infrastructure/terraform/`
 (production-shaped: VPC with private subnets + NAT, ALB, ECS Fargate, RDS

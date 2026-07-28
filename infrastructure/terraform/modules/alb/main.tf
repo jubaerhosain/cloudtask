@@ -39,8 +39,11 @@ resource "aws_lb_target_group" "web" {
 
   deregistration_delay = 30
 
+  # /healthz, not /: the root route is a client component that redirects, so
+  # probing it asserted little beyond "Next.js served some HTML". Not under
+  # /api/ either — the listener rule below sends /api/* to the api service.
   health_check {
-    path                = "/"
+    path                = "/healthz"
     matcher             = "200"
     interval            = 30
     timeout             = 5

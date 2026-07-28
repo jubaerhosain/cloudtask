@@ -3,6 +3,19 @@ locals {
 
   # Namespace the worker's EMF metrics land in (metrics.service.ts).
   emf_namespace = "CloudTask/Dev"
+
+  # Container-level liveness probes. Both prod images are node:24-bookworm-slim,
+  # which ships neither curl nor wget, so the probe goes through node's global
+  # fetch. Exec form (CMD, not CMD-SHELL) — no shell, so no quoting hazards.
+  # The worker has no port and therefore no probe; a hung worker is caught by
+  # the exports queue-lag and DLQ alarms instead.
+  http_probe = {
+    for service, path in { api = "/health", web = "/healthz" } :
+    service => [
+      "CMD", "node", "-e",
+      "fetch('http://127.0.0.1:${var.container_port}${path}').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+    ]
+  }
 }
 
 module "networking" {
@@ -100,6 +113,13 @@ module "api_service" {
   target_group_arn   = module.alb.api_target_group_arn
   aws_region         = var.aws_region
 
+  # Nest/TypeORM bootstrap is slower than the web server's, hence the longer
+  # grace before failures start counting.
+  container_health_check = {
+    command      = local.http_probe["api"]
+    start_period = 60
+  }
+
   environment_variables = {
     NODE_ENV                 = "production"
     PORT                     = tostring(var.container_port)
@@ -162,6 +182,10 @@ module "web_service" {
   execution_role_arn = aws_iam_role.ecs_execution.arn
   target_group_arn   = module.alb.web_target_group_arn
   aws_region         = var.aws_region
+
+  container_health_check = {
+    command = local.http_probe["web"]
+  }
 
   # NEXT_PUBLIC_API_BASE_URL is baked into the image at build time.
   environment_variables = {

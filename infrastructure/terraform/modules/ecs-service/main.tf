@@ -30,35 +30,49 @@ resource "aws_ecs_task_definition" "this" {
   }
 
   container_definitions = jsonencode([
-    {
-      name      = var.service_name
-      image     = var.image
-      essential = true
+    merge(
+      {
+        name      = var.service_name
+        image     = var.image
+        essential = true
 
-      portMappings = var.container_port == null ? [] : [
-        {
-          containerPort = var.container_port
-          protocol      = "tcp"
+        portMappings = var.container_port == null ? [] : [
+          {
+            containerPort = var.container_port
+            protocol      = "tcp"
+          }
+        ]
+
+        environment = [
+          for k, v in var.environment_variables : { name = k, value = v }
+        ]
+
+        secrets = [
+          for k, v in var.secrets : { name = k, valueFrom = v }
+        ]
+
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            "awslogs-group"         = aws_cloudwatch_log_group.this.name
+            "awslogs-region"        = var.aws_region
+            "awslogs-stream-prefix" = var.service_name
+          }
         }
-      ]
+      },
 
-      environment = [
-        for k, v in var.environment_variables : { name = k, value = v }
-      ]
-
-      secrets = [
-        for k, v in var.secrets : { name = k, valueFrom = v }
-      ]
-
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.this.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = var.service_name
+      # Merged in rather than set to null: ECS treats an explicit null
+      # healthCheck as a diff against the registered revision on every apply.
+      var.container_health_check == null ? {} : {
+        healthCheck = {
+          command     = var.container_health_check.command
+          interval    = var.container_health_check.interval
+          timeout     = var.container_health_check.timeout
+          retries     = var.container_health_check.retries
+          startPeriod = var.container_health_check.start_period
         }
       }
-    }
+    )
   ])
 }
 

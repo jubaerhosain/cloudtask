@@ -75,6 +75,37 @@ variable "secrets" {
   default     = {}
 }
 
+variable "container_health_check" {
+  description = <<-EOT
+    Optional ECS container-level health check. Null (default) omits the block
+    entirely, which is what the worker wants — it has no port to probe.
+    This is independent of the ALB target group check: ECS replaces a container
+    whose own check fails, whereas the ALB only stops sending it traffic.
+  EOT
+
+  type = object({
+    command      = list(string)
+    interval     = optional(number, 30)
+    timeout      = optional(number, 5)
+    retries      = optional(number, 3)
+    start_period = optional(number, 30)
+  })
+
+  default = null
+
+  validation {
+    condition     = var.container_health_check == null ? true : length(var.container_health_check.command) > 0
+    error_message = "container_health_check.command must be non-empty; the first element is CMD or CMD-SHELL."
+  }
+
+  validation {
+    condition = var.container_health_check == null ? true : contains(
+      ["CMD", "CMD-SHELL"], var.container_health_check.command[0]
+    )
+    error_message = "container_health_check.command must start with \"CMD\" or \"CMD-SHELL\"."
+  }
+}
+
 variable "target_group_arn" {
   description = "ALB target group to register with; null for services not behind the ALB (worker)"
   type        = string
