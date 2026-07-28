@@ -22,9 +22,18 @@ variable "owner" {
   default     = "jubaer"
 }
 
-variable "deploy_role_arn" {
-  description = "IAM role Terraform assumes for all AWS operations (trusts the owner's IAM user)"
+# The only account-specific value in this stack. Kept out of terraform.tfvars
+# (which is committed) and supplied by the gitignored account.auto.tfvars so the
+# rest of the environment config can live in git. providers.tf builds the deploy
+# role ARN from it.
+variable "aws_account_id" {
+  description = "AWS account ID the stack deploys into (set in account.auto.tfvars, which is gitignored)"
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
+    error_message = "aws_account_id must be exactly 12 digits."
+  }
 }
 
 variable "enable_nat_gateway" {

@@ -83,7 +83,7 @@ default_tags {
 
 If you read `aws-deployment-lab-runbook-terraform.md`, note its sample `providers.tf` and
 `terraform.tfvars` snippets are **stale** — they still show `ExpiresOn`/`expires_on`, region
-`ap-southeast-1`, and no `deploy_role_arn`. The runbook's prose is useful; trust the actual
+`ap-southeast-1`, and no assumed deploy role. The runbook's prose is useful; trust the actual
 `.tf` files over its code samples.
 
 ### 5. The deploy role is console-managed
@@ -97,16 +97,21 @@ deliberately, by a human.
 
 ### 6. Account-specific values are gitignored
 
-`terraform.tfvars` and `backend.hcl` both embed the AWS account ID, so both are gitignored
-with committed `.example` twins. A fresh clone needs:
+The AWS account ID is the only account-specific value, and it is confined to two gitignored
+files with committed `.example` twins. A fresh clone needs:
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
-cp backend.hcl.example backend.hcl
+cp account.auto.tfvars.example account.auto.tfvars   # aws_account_id
+cp backend.hcl.example backend.hcl                  # bucket + role ARN, both with the ID
 ```
 
-Forget this and `terraform plan` fails asking for `deploy_role_arn`, or `init` fails with no
+Forget this and `terraform plan` fails asking for `aws_account_id`, or `init` fails with no
 bucket configured.
+
+Why the ID appears twice: `providers.tf` composes the deploy role ARN from
+`var.aws_account_id`, but a `backend` block **cannot reference variables or locals** — it is
+evaluated before variables exist — so `backend.hcl` has to repeat the literal. Everything
+else, `terraform.tfvars` included, is committed.
 
 ### 7. Secret values live in Terraform state
 

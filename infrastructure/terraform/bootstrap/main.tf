@@ -2,11 +2,17 @@
 # This stack uses LOCAL state on purpose — it holds no secrets and exists only
 # so environments/dev can use the S3 backend.
 
+locals {
+  # Same console-managed role environments/dev assumes. Composed from the account
+  # ID so the account ID stays the only value kept out of git.
+  deploy_role_arn = "arn:aws:iam::${var.aws_account_id}:role/${var.project_name}-terraform-deploy"
+}
+
 provider "aws" {
   region = var.aws_region
 
   assume_role {
-    role_arn     = var.deploy_role_arn
+    role_arn     = local.deploy_role_arn
     session_name = "terraform"
   }
 

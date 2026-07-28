@@ -51,11 +51,15 @@ Terraform 1.10 or newer.
 ## `providers.tf` — how Terraform authenticates and tags
 
 ```hcl
+locals {
+  deploy_role_arn = "arn:aws:iam::${var.aws_account_id}:role/${var.project_name}-terraform-deploy"
+}
+
 provider "aws" {
   region = var.aws_region
 
   assume_role {
-    role_arn     = var.deploy_role_arn
+    role_arn     = local.deploy_role_arn
     session_name = "terraform"
   }
 
@@ -71,6 +75,10 @@ provider "aws" {
   }
 }
 ```
+
+The ARN is **composed in a local** rather than passed in whole, so the AWS account ID is the
+single account-specific value in the stack. That keeps it confined to the gitignored
+`account.auto.tfvars` and lets `terraform.tfvars` be committed.
 
 **`assume_role`.** Your IAM user's credentials are used only to call `sts:AssumeRole` on
 `cloudtask-terraform-deploy`; every subsequent AWS call uses that role's temporary
@@ -100,7 +108,7 @@ because the bucket name embeds the AWS account ID.
 
 ## `variables.tf` — the knobs
 
-15 variables. Only one is required (no `default`): **`deploy_role_arn`**.
+15 variables. Only one is required (no `default`): **`aws_account_id`**.
 
 | Variable                  | Type   | Default                  | What it controls                                          |
 | ------------------------- | ------ | ------------------------ | --------------------------------------------------------- |
@@ -108,7 +116,7 @@ because the bucket name embeds the AWS account ID.
 | `project_name`            | string | `cloudtask`              | First half of `name_prefix`                               |
 | `environment`             | string | `dev`                    | Second half of `name_prefix`                              |
 | `owner`                   | string | `jubaer`                 | The `Owner` tag                                           |
-| `deploy_role_arn`         | string | **required**             | Role the provider assumes                                 |
+| `aws_account_id`          | string | **required**             | Account to deploy into; builds the role the provider assumes |
 | `enable_nat_gateway`      | bool   | `true`                   | Whether tasks can reach the internet at all               |
 | `github_repository`       | string | `jubaerhosain/cloudtask` | Which repo may assume the CI role                         |
 | `create_oidc_provider`    | bool   | `true`                   | Create the GitHub OIDC provider, or reuse an existing one |
@@ -134,25 +142,22 @@ CI hand-off:
 # desired_count drift afterwards).
 ```
 
-There are **no `validation {}` blocks** anywhere in this repo. An invalid
+The only `validation {}` block is on `aws_account_id` (12 digits), which fails fast on a
+typo that would otherwise surface as an opaque `AssumeRole` denial. An invalid
 `database_instance_class` is caught by the AWS API during apply, not by Terraform during
 plan.
 
-## `terraform.tfvars` — this account's values
+## `terraform.tfvars` — this environment's values
 
-Gitignored; copied from `terraform.tfvars.example`. Terraform loads any file named exactly
-`terraform.tfvars` automatically — no flag needed.
+**Committed.** It holds no account-specific values, so it is versioned like any other
+config. Terraform loads any file named exactly `terraform.tfvars` automatically — no flag
+needed.
 
 ```hcl
 aws_region   = "ap-south-1"
 project_name = "cloudtask"
 environment  = "dev"
 owner        = "jubaer"
-
-# Role Terraform assumes for every AWS call (created manually in the console;
-# trust policy allows your IAM user). Also set role_arn in backend.hcl
-# (copy from backend.hcl.example).
-deploy_role_arn = "arn:aws:iam::910626961900:role/cloudtask-terraform-deploy"
 
 # Required for tasks to reach ECR/Secrets Manager/SQS/S3 from private subnets.
 enable_nat_gateway = true
@@ -168,6 +173,20 @@ desired_count    = 0
 database_instance_class = "db.t4g.micro"
 redis_node_type         = "cache.t4g.micro"
 ```
+
+## `account.auto.tfvars` — the one gitignored value
+
+Gitignored (`*.auto.tfvars`); copied from `account.auto.tfvars.example`. Terraform
+auto-loads every `*.auto.tfvars` file, so this needs no `-var-file` flag either.
+
+```hcl
+aws_account_id = "<account-id>"
+```
+
+That is the whole file. `providers.tf` turns it into
+`arn:aws:iam::<account-id>:role/cloudtask-terraform-deploy`. The same account ID has to be
+repeated by hand in `backend.hcl`, because a `backend` block cannot reference variables or
+locals — see [04](./04-state-and-backend.md).
 
 `create_oidc_provider` deserves a note: an AWS account can only have **one** OIDC provider
 per URL. If you already federate another repo with GitHub Actions in this account, set this

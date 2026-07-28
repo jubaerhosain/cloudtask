@@ -16,7 +16,14 @@ variable "owner" {
   default     = "jubaer"
 }
 
-variable "deploy_role_arn" {
-  description = "IAM role Terraform assumes for all AWS operations (trusts the owner's IAM user)"
+# The only account-specific value in this stack, supplied by the gitignored
+# account.auto.tfvars. main.tf builds the deploy role ARN from it.
+variable "aws_account_id" {
+  description = "AWS account ID the state bucket is created in (set in account.auto.tfvars, which is gitignored)"
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
+    error_message = "aws_account_id must be exactly 12 digits."
+  }
 }

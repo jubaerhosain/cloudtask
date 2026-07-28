@@ -1,0 +1,12 @@
+# Copy to account.auto.tfvars and fill in. *.auto.tfvars is gitignored; Terraform
+# loads it automatically, so no -var-file flag is needed.
+#
+# This is the only account-specific value in the stack. providers.tf turns it into
+# the deploy role ARN Terraform assumes:
+#   arn:aws:iam::<aws_account_id>:role/<project_name>-terraform-deploy
+#
+# The role itself is created manually in the console, with a trust policy that
+# allows your IAM user. The same account ID also goes in backend.hcl (copy
+# backend.hcl.example) — backend blocks cannot reference variables.
+
+aws_account_id = "<account-id>"

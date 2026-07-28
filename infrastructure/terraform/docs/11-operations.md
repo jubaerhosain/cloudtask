@@ -22,8 +22,9 @@ a plan, how to add a resource, and what the common errors mean.
 
 ```bash
 cd infrastructure/terraform/bootstrap
+cp account.auto.tfvars.example account.auto.tfvars   # set aws_account_id
 terraform init
-terraform apply                       # prompts for deploy_role_arn (no default)
+terraform apply                       # prompts for aws_account_id if that file is missing
 terraform output state_bucket_name    # copy this
 ```
 
@@ -34,8 +35,8 @@ Run once, ever. Its state stays in a local `terraform.tfstate` here — see
 
 ```bash
 cd ../environments/dev
-cp terraform.tfvars.example terraform.tfvars   # set deploy_role_arn
-cp backend.hcl.example backend.hcl             # set bucket (from step 1) + role_arn
+cp account.auto.tfvars.example account.auto.tfvars   # set aws_account_id
+cp backend.hcl.example backend.hcl                   # set bucket (from step 1) + role_arn
 ```
 
 ### Step 3 — the environment
@@ -354,7 +355,8 @@ issues, and calls `process.exit(1)`. The message tells you exactly which variabl
 
 ### `terraform validate` passes but `apply` fails with an AWS error
 
-Expected. There are no `validation {}` blocks in this repo, so value-level mistakes
+Expected. Apart from the `aws_account_id` digit check, there are no `validation {}` blocks
+in this repo, so value-level mistakes
 (a nonexistent instance class, a name that's too long) surface only when AWS rejects them.
 `validate` checks syntax and types, not AWS's rules.
 

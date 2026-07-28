@@ -89,10 +89,10 @@ you deliberately leave out some settings and supply them at `init` time:
 
 ```hcl
 # environments/dev/backend.hcl  (gitignored)
-bucket = "cloudtask-terraform-state-910626961900"
+bucket = "cloudtask-terraform-state-<account-id>"
 
 assume_role = {
-  role_arn     = "arn:aws:iam::910626961900:role/cloudtask-terraform-deploy"
+  role_arn     = "arn:aws:iam::<account-id>:role/cloudtask-terraform-deploy"
   session_name = "terraform"
 }
 ```
@@ -144,7 +144,7 @@ sequenceDiagram
   You->>BS: terraform init && terraform apply
   BS->>S3: create bucket, enable versioning + encryption + PAB
   You->>BS: terraform output state_bucket_name
-  BS-->>You: cloudtask-terraform-state-910626961900
+  BS-->>You: cloudtask-terraform-state-{account-id}
   You->>You: paste into environments/dev/backend.hcl
 
   You->>DEV: terraform init -backend-config=backend.hcl
@@ -176,8 +176,8 @@ terraform-outputs.json
 | ------------------ | ----------------------------------------------------------------------- |
 | `*.tfstate`        | Contains the RDS password and JWT secret in plain text                  |
 | `.terraform/`      | Downloaded provider binaries and backend cache — machine-local, ~500 MB |
-| `terraform.tfvars` | Holds `deploy_role_arn`, which embeds the account ID                    |
-| `backend.hcl`      | Holds the state bucket name and role ARN, both embedding the account ID |
+| `*.auto.tfvars`    | `account.auto.tfvars` holds `aws_account_id`                             |
+| `backend.hcl`      | Holds the state bucket name and role ARN, both embedding the account ID  |
 | `tfplan`           | A saved binary plan; can contain secret values                          |
 
 **Committed on purpose:** `.terraform.lock.hcl`. That is the provider _dependency_ lock (aws
@@ -188,9 +188,12 @@ Both gitignored files have committed `.example` twins, so a fresh clone knows ex
 to fill in:
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
+cp account.auto.tfvars.example account.auto.tfvars
 cp backend.hcl.example backend.hcl
 ```
+
+`terraform.tfvars` needs no such twin — it is committed, because the account ID is the only
+account-specific value and it now lives in `account.auto.tfvars` alone.
 
 ## Secrets in state
 

@@ -82,7 +82,7 @@ provider "aws" {
   region = var.aws_region
 
   assume_role {
-    role_arn     = var.deploy_role_arn
+    role_arn     = local.deploy_role_arn
     session_name = "terraform"
   }
 
@@ -165,7 +165,7 @@ variable "subnet_ids" {
 
 - **With a `default`** → optional.
 - **Without a `default`** → required; Terraform errors if the caller omits it. In
-  `environments/dev/variables.tf`, `deploy_role_arn` is the only required variable.
+  `environments/dev/variables.tf`, `aws_account_id` is the only required variable.
 - Types used in this repo: `string`, `number`, `bool`, `list(string)`, `map(string)`, and
   `set(string)` (in `modules/ecr/variables.tf`).
 
@@ -647,8 +647,8 @@ Two rules that trip up beginners:
 
 So you don't wonder where they are:
 
-- **`validation {}`** blocks on variables — none in this repo. Invalid input fails at the
-  AWS API instead.
+- **`validation {}`** blocks on variables — only one, on `aws_account_id` (12 digits) in
+  `environments/dev` and `bootstrap`. Every other invalid input fails at the AWS API instead.
 - **`moved`, `import`, `check`** blocks — none.
 - **Workspaces** — one directory per environment is used instead.
 - **Provider aliases** — a single region, a single `aws` provider.
