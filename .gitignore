@@ -33,8 +33,15 @@ Thumbs.db
 .idea/
 *.swp
 
-# terraform (deferred this pass — pre-empt state leaks)
+# terraform — state and account-specific config stay local; the provider lock
+# file (.terraform.lock.hcl) IS committed for reproducible provider versions.
+# terraform.tfvars IS committed too: the only account-specific value is the
+# account ID, which lives in *.auto.tfvars (auto-loaded) and in backend.hcl
+# (a backend block cannot reference variables, so the ARN is literal there).
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl
+*.auto.tfvars
+backend.hcl
+tfplan
+terraform-outputs.json

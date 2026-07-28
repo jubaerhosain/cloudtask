@@ -1,9 +1,14 @@
-name: Build & Push Images
+name: Release
 
-# Target workflow (spec §21): builds production images and pushes immutable,
-# Git-SHA-tagged images to ECR using GitHub OIDC (no long-lived AWS keys).
-# Dormant until the repo variables/role below are configured; the initial
-# runbook may push images manually with local AWS credentials instead.
+# Full release pipeline (spec §21/§24): build production images, push immutable
+# Git-SHA-tagged images to ECR via GitHub OIDC (no long-lived AWS keys), run DB
+# migrations as a one-shot ECS task, roll the three services, and smoke-test
+# through the ALB. Dormant until the repo variables/role below are configured
+# (created by infrastructure/terraform).
+#
+# Naming contract with Terraform (modules/ecs-service, modules/ecr):
+#   cluster cloudtask-dev; services/task-def families cloudtask-dev-{api,worker,web};
+#   container names api|worker|web; log groups /ecs/cloudtask-dev-*.
 
 on:
   push:
@@ -13,6 +18,15 @@ on:
 permissions:
   id-token: write
   contents: read
+
+# Serialize releases: overlapping pushes to main must never interleave
+# migrations/deployments against the single dev environment.
+concurrency:
+  group: release-dev
+  cancel-in-progress: false
+
+env:
+  ECS_CLUSTER: cloudtask-dev
 
 jobs:
   build-push:
@@ -48,3 +62,165 @@ jobs:
           tags: ${{ steps.ecr.outputs.registry }}/cloudtask-dev-${{ matrix.app }}:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+
+  migrate:
+    name: Run DB migrations
+    runs-on: ubuntu-latest
+    # needs on the full matrix: never migrate (or deploy) on a partial push.
+    needs: build-push
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Download current api task definition
+        run: |
+          aws ecs describe-task-definition --task-definition cloudtask-dev-api \
+            --query taskDefinition > task-def.json
+
+      - name: Render task definition with new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: api
+          image: ${{ steps.ecr.outputs.registry }}/cloudtask-dev-api:${{ github.sha }}
+
+      - name: Register new api task definition revision
+        id: register
+        # No `service:` input -> register-only. The action strips the
+        # read-only fields describe-task-definition returns that
+        # RegisterTaskDefinition would reject.
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+
+      - name: Run migration task and wait for it
+        run: |
+          set -euo pipefail
+
+          # Reuse the api service's network config (private-app subnets +
+          # api SG) — valid even while the service sits at desired_count 0.
+          NETCFG=$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+            --services cloudtask-dev-api \
+            --query 'services[0].networkConfiguration' --output json)
+
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$ECS_CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "${{ steps.register.outputs.task-definition-arn }}" \
+            --network-configuration "$NETCFG" \
+            --started-by "gha-migrate-${GITHUB_RUN_ID}" \
+            --overrides '{"containerOverrides":[{"name":"api","command":["node","node_modules/typeorm/cli.js","-d","dist/database/data-source.js","migration:run"]}]}' \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Migration task: $TASK_ARN"
+
+          aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN"
+
+          EXIT=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' --output text)
+          REASON=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$TASK_ARN" \
+            --query 'tasks[0].stoppedReason' --output text)
+          echo "exitCode=$EXIT stoppedReason=$REASON"
+
+          # "None" means the container never ran (e.g. image pull or secret
+          # fetch failed) — that must fail the release too.
+          [ "$EXIT" = "0" ]
+
+      - name: Show migration logs
+        if: always()
+        run: aws logs tail /ecs/cloudtask-dev-api --since 15m || true
+
+  deploy:
+    name: Deploy ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    needs: migrate
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, worker, web]
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure service is scaled up (bootstrap-safe)
+        # Terraform creates services at desired_count 0 and ignores
+        # desired_count afterwards; this is a no-op on steady-state runs.
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" \
+            --service cloudtask-dev-${{ matrix.app }} --desired-count 1 > /dev/null
+
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition --task-definition cloudtask-dev-${{ matrix.app }} \
+            --query taskDefinition > task-def.json
+
+      - name: Render task definition with new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-def.json
+          container-name: ${{ matrix.app }}
+          image: ${{ steps.ecr.outputs.registry }}/cloudtask-dev-${{ matrix.app }}:${{ github.sha }}
+
+      - name: Deploy and wait for stability
+        id: deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          service: cloudtask-dev-${{ matrix.app }}
+          cluster: cloudtask-dev
+          wait-for-service-stability: true
+          # 0.25 vCPU tasks start slowly, but the default 30 min is too long
+          # to sit on a broken deploy.
+          wait-for-minutes: 15
+
+      - name: Verify deployment was not rolled back
+        # The ECS circuit breaker rolls back to the previous revision on
+        # failure, after which the service is "stable" again — a stability
+        # wait alone can pass silently. Require that the PRIMARY deployment
+        # is our new revision and completed.
+        run: |
+          set -euo pipefail
+          read -r TD STATE <<<"$(aws ecs describe-services --cluster "$ECS_CLUSTER" \
+            --services cloudtask-dev-${{ matrix.app }} \
+            --query "services[0].deployments[?status=='PRIMARY']|[0].[taskDefinition,rolloutState]" \
+            --output text)"
+          echo "PRIMARY=$TD rolloutState=$STATE"
+          [ "$TD" = "${{ steps.deploy.outputs.task-definition-arn }}" ]
+          [ "$STATE" = "COMPLETED" ]
+
+  smoke-test:
+    name: Smoke test via ALB
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Probe /health, /ready, /healthz and the web root
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+        run: |
+          set -euo pipefail
+          BASE="${NEXT_PUBLIC_API_BASE_URL%/api/v1}"
+          echo "Probing $BASE"
+          curl -fsS --retry 6 --retry-delay 10 --retry-all-errors "$BASE/health"
+          echo
+          curl -fsS "$BASE/ready"
+          echo
+          # /healthz is what the web target group polls — probe the same path the
+          # ALB does, then the root to confirm the app actually renders.
+          curl -fsS "$BASE/healthz"
+          echo
+          curl -fsS -o /dev/null -w 'web / -> %{http_code}\n' "$BASE/"
