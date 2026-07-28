@@ -1,0 +1,9 @@
+# EB CLI local state — contains the environment name and region, not secrets,
+# but it is per-developer and should not be shared.
+.elasticbeanstalk/
+
+# Elastic Beanstalk generates .env on the instance from the environment
+# properties. If a .env file is present in the deployed bundle, Elastic
+# Beanstalk will NOT generate one and every ${VAR} in docker-compose.yml
+# resolves to an empty string. Never commit or deploy one.
+.env

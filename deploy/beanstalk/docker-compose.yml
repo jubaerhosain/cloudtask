@@ -1,0 +1,100 @@
+# CloudTask production stack for AWS Elastic Beanstalk.
+#
+# Platform branch: "Docker running on 64bit Amazon Linux 2023".
+# Deployed by `eb deploy` from this directory. See
+# aws-deployment-lab-runbook-beanstalk.md for the full procedure.
+#
+# All four containers run on every instance in the environment. `nginx-proxy`
+# is the only one that publishes a host port: Elastic Beanstalk's load balancer
+# sends traffic to port 80 on the instance, and the proxy fans it out to `api`
+# and `web` by path — reproducing the ALB listener rules that the ECS runbooks
+# configure on the load balancer itself.
+#
+# Every ${VAR} below is interpolated from the `.env` file that Elastic
+# Beanstalk generates on the instance from the environment properties. Do NOT
+# add a .env file to this directory: if one is present in the bundle, Elastic
+# Beanstalk will not generate one and every variable resolves empty.
+#
+# Local sanity check (does not need AWS):
+#   ECR_REGISTRY=x GIT_SHA=y DATABASE_URL=z JWT_SECRET=z REDIS_HOST=z \
+#   EXPORT_QUEUE_URL=z EXPORT_BUCKET_NAME=z AWS_REGION=z \
+#     docker compose -f deploy/beanstalk/docker-compose.yml config
+
+services:
+  # ---------------------------------------------------------------------------
+  # Reverse proxy. Owns host port 80 and is the only entry point.
+  # ---------------------------------------------------------------------------
+  nginx-proxy:
+    build: ./proxy
+    ports:
+      - '80:80'
+    volumes:
+      # Elastic Beanstalk's health agent reads the healthd logs from this path
+      # on the host to produce enhanced health metrics.
+      - '/var/log/nginx:/var/log/nginx'
+    depends_on:
+      - api
+      - web
+    mem_limit: 64m
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # API. Postgres + Redis + SQS send + S3 presign.
+  # ---------------------------------------------------------------------------
+  api:
+    image: '${ECR_REGISTRY}/cloudtask-dev-api:${GIT_SHA}'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: '${DATABASE_URL}'
+      JWT_SECRET: '${JWT_SECRET}'
+      REDIS_HOST: '${REDIS_HOST}'
+      REDIS_PORT: '6379'
+      # ElastiCache has in-transit encryption enabled, so this must be true.
+      REDIS_TLS_ENABLED: 'true'
+      AWS_REGION: '${AWS_REGION}'
+      EXPORT_QUEUE_URL: '${EXPORT_QUEUE_URL}'
+      EXPORT_BUCKET_NAME: '${EXPORT_BUCKET_NAME}'
+      LOG_LEVEL: info
+      # Same origin via nginx-proxy, so the browser never makes a cross-origin
+      # call. Kept non-empty for defence in depth.
+      CORS_ORIGINS: '${PUBLIC_ORIGIN}'
+      # Deliberately NOT set:
+      #   AWS_ENDPOINT_URL        -> would redirect the SDK to LocalStack
+      #   ENABLE_FAILURE_ENDPOINTS -> rejected when NODE_ENV=production
+    mem_limit: 512m
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # Worker. SQS consumer. No port, no Redis, no JWT.
+  # ---------------------------------------------------------------------------
+  worker:
+    image: '${ECR_REGISTRY}/cloudtask-dev-worker:${GIT_SHA}'
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: '${DATABASE_URL}'
+      AWS_REGION: '${AWS_REGION}'
+      EXPORT_QUEUE_URL: '${EXPORT_QUEUE_URL}'
+      EXPORT_BUCKET_NAME: '${EXPORT_BUCKET_NAME}'
+      SQS_WAIT_TIME_SECONDS: '20'
+      SQS_VISIBILITY_TIMEOUT_SECONDS: '60'
+      LOG_LEVEL: info
+    # On SIGTERM the worker stops polling, finishes the message it is currently
+    # processing, and exits 0. The 10s Compose default can kill it mid-export.
+    stop_grace_period: 120s
+    mem_limit: 384m
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # Web. Next.js standalone server. Calls the API from the browser only.
+  # ---------------------------------------------------------------------------
+  web:
+    image: '${ECR_REGISTRY}/cloudtask-dev-web:${GIT_SHA}'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # NEXT_PUBLIC_API_BASE_URL is NOT set here on purpose. It is inlined into
+      # the JavaScript bundle at image build time; setting it at runtime has no
+      # effect. See §21 of the runbook.
+    mem_limit: 448m
+    restart: always

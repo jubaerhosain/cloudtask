@@ -86,11 +86,23 @@ docker build --target prod \
 
 ## Deployment
 
-AWS resources are created by hand using
-[`aws-deployment-lab-runbook-manual.md`](./aws-deployment-lab-runbook-manual.md).
 The application reads all configuration from environment variables, so it runs
 unchanged once the AWS resources exist — in AWS, `DATABASE_URL` and `JWT_SECRET`
 are injected from the Secrets Manager secret `cloudtask/dev/application`.
+
+Four runbooks deploy the same application on deliberately different
+foundations, so they can be compared directly:
+
+| Runbook | Method | What it teaches |
+|---|---|---|
+| [manual](./aws-deployment-lab-runbook-manual.md) | AWS Console, by hand | Every wire: subnets, route tables, SGs, target groups, listener rules |
+| [terraform](./aws-deployment-lab-runbook-terraform.md) | Terraform modules | Declarative infrastructure, state, drift, plan/apply discipline |
+| [ecs-express-mode](./aws-deployment-lab-runbook-ecs-express-mode.md) | AWS CLI + ECS Express Mode | Managed compute; hides the ALB, TLS, auto scaling, canary deploys |
+| [beanstalk](./aws-deployment-lab-runbook-beanstalk.md) | EB CLI + Docker Compose | Platform-as-a-service; instance-hosted containers, enhanced health |
+
+Start with the manual runbook — the two managed-compute runbooks are a fraction
+of its length, and the point is seeing what they removed. The Elastic Beanstalk
+deployment bundle lives in [`deploy/beanstalk/`](./deploy/beanstalk).
 
 ## Implementation roadmap
 

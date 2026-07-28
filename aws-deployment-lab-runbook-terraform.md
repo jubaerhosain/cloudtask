@@ -4,6 +4,19 @@
 
 This is a hands-on AWS lab for deploying the CloudTask application specified in `application-spec.md`. Follow it in sequence. It covers account preparation, Terraform deployment, application release, validation, controlled failures, troubleshooting, and deletion of costly resources.
 
+### Other deployment runbooks
+
+CloudTask has four deployment runbooks. They build the **same application** on deliberately different foundations, so they can be compared directly.
+
+| Runbook | Provisioning method | What it teaches | What it hides |
+|---|---|---|---|
+| `aws-deployment-lab-runbook-manual.md` | AWS Console, by hand | Every wire: subnets, route tables, SGs, target groups, listener rules | Nothing |
+| **this runbook** | Terraform modules | Declarative infrastructure, state, drift, plan/apply discipline | Nothing, but expresses it as code |
+| `aws-deployment-lab-runbook-ecs-express-mode.md` | AWS CLI + ECS Express Mode | Managed compute: what you still own vs. what AWS assumes | ALB, target groups, TLS, auto scaling, canary deployments |
+| `aws-deployment-lab-runbook-beanstalk.md` | EB CLI + Docker Compose | Platform-as-a-service: instance-hosted containers, enhanced health | ALB, Auto Scaling group, EC2 provisioning, CloudFormation |
+
+The two managed-compute runbooks are much shorter than this one, and the reason they are shorter is the lesson. Both use the account's default VPC with no NAT Gateway, so they are also noticeably cheaper to run for an afternoon.
+
 ## 2. Cost warning
 
 This environment can incur charges. The most important potentially billable resources include:

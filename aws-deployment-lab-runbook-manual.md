@@ -8,6 +8,19 @@ It intentionally does **not** use Terraform, CloudFormation, CDK, Copilot, or ot
 
 This runbook builds the **same architecture the specification defines** — six subnets across three tiers, six security groups, separate API and worker task roles, and a web/API/worker service split — by hand instead of with Terraform. Only the creation method differs.
 
+### Other deployment runbooks
+
+CloudTask has four deployment runbooks. They build the **same application** on deliberately different foundations, so they can be compared directly.
+
+| Runbook | Provisioning method | What it teaches | What it hides |
+|---|---|---|---|
+| **this runbook** | AWS Console, by hand | Every wire: subnets, route tables, SGs, target groups, listener rules | Nothing |
+| `aws-deployment-lab-runbook-terraform.md` | Terraform modules | Declarative infrastructure, state, drift, plan/apply discipline | Nothing, but expresses it as code |
+| `aws-deployment-lab-runbook-ecs-express-mode.md` | AWS CLI + ECS Express Mode | Managed compute: what you still own vs. what AWS assumes | ALB, target groups, TLS, auto scaling, canary deployments |
+| `aws-deployment-lab-runbook-beanstalk.md` | EB CLI + Docker Compose | Platform-as-a-service: instance-hosted containers, enhanced health | ALB, Auto Scaling group, EC2 provisioning, CloudFormation |
+
+**Start here.** The two managed-compute runbooks are a fraction of this one's length, and you cannot see what they removed unless you have built it yourself once. Read them after this one.
+
 The lab sequence is:
 
 1. Prepare and test the application locally.
